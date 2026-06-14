@@ -1,0 +1,44 @@
+# --- Secrets and environment ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Build output ---
+dist/
+build/
+out/
+.next/
+.vercel/
+.cache/
+coverage/
+
+# --- IDE / editor ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Local Claude scratch ---
+.claude/local/
