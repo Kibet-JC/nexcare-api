@@ -1,0 +1,23 @@
+{
+  "name": "nexcare-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "NexCare API — backend HIMS/EHR platform powering Elara Healthcare clinical operations",
+  "type": "module",
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "eslint": "^10.5.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.1.8"
+  }
+}
