@@ -7,6 +7,7 @@
 // secrets show up in request/response objects and in error payloads. The list
 // grows as new sensitive fields enter the data model.
 import { pino } from 'pino';
+import { env } from '../config/env.js';
 
 // Dotted paths pino should scrub before serialising. `[*]` matches array items.
 // Header names are lower-cased by Node, so we match the lower-cased form.
@@ -31,7 +32,7 @@ const REDACT_PATHS = [
 
 export const logger = pino({
   // Level is env-driven so production can dial verbosity without a code change.
-  level: process.env.LOG_LEVEL ?? 'info',
+  level: env.LOG_LEVEL,
   redact: {
     paths: REDACT_PATHS,
     censor: '[REDACTED]',
