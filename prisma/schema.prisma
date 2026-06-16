@@ -1,0 +1,18 @@
+// NexCare API — Prisma schema.
+//
+// This file currently defines only the database connection and client
+// generator. There are intentionally NO data models yet: this issue stands up
+// the database plumbing (connection, client singleton, integration test).
+//
+// The first domain model (Patient) lands in Issue #6. Every model added from
+// here on follows the conventions in CLAUDE.md §4.2 — TIMESTAMPTZ dates,
+// E.164 phone strings, soft-delete via `deletedAt` where applicable.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

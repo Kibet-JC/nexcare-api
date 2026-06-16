@@ -33,6 +33,8 @@ describe('config/env', () => {
   it('coerces a provided PORT and keeps a valid LOG_LEVEL', async () => {
     process.env.PORT = '8080';
     process.env.LOG_LEVEL = 'debug';
+    process.env.DATABASE_URL =
+      'postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public';
 
     const { env } = await import('../src/config/env.js');
 
@@ -41,6 +43,9 @@ describe('config/env', () => {
   });
 
   it('returns a frozen env object', async () => {
+    process.env.DATABASE_URL =
+      'postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public';
+
     const { env } = await import('../src/config/env.js');
 
     expect(Object.isFrozen(env)).toBe(true);
@@ -56,6 +61,22 @@ describe('config/env', () => {
 
   it('throws on an invalid LOG_LEVEL enum value', async () => {
     process.env.LOG_LEVEL = 'verbose';
+
+    await expect(import('../src/config/env.js')).rejects.toThrow(
+      /Invalid environment configuration/,
+    );
+  });
+
+  it('fails fast when DATABASE_URL is missing', async () => {
+    delete process.env.DATABASE_URL;
+
+    await expect(import('../src/config/env.js')).rejects.toThrow(
+      /Invalid environment configuration/,
+    );
+  });
+
+  it('fails fast when DATABASE_URL is not a valid URL', async () => {
+    process.env.DATABASE_URL = 'not-a-url';
 
     await expect(import('../src/config/env.js')).rejects.toThrow(
       /Invalid environment configuration/,

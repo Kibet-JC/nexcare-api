@@ -1,0 +1,28 @@
+# Local development services for NexCare API.
+#
+# This brings up the same PostgreSQL 16 engine we run in production (Railway),
+# so local dev and the no-mock integration tests (CLAUDE.md §4.2) exercise a
+# real database. Credentials here are local-only conveniences; production
+# secrets live in Railway env and never in source.
+services:
+  postgres:
+    image: postgres:16
+    container_name: nexcare-postgres
+    environment:
+      POSTGRES_USER: nexcare
+      POSTGRES_PASSWORD: nexcare
+      POSTGRES_DB: nexcare_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - nexcare-pgdata:/var/lib/postgresql/data
+    # Gate "healthy" on the server actually accepting connections so dependants
+    # (and CI's `service health` wait) don't race the engine's startup.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexcare -d nexcare_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nexcare-pgdata:
