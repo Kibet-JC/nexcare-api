@@ -23,6 +23,12 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
+  // PostgreSQL connection string consumed by Prisma (see prisma/schema.prisma).
+  // Required and non-empty: a missing or blank DATABASE_URL must fail the
+  // process on boot rather than surfacing as an opaque connection error on the
+  // first query. No default — the value differs per environment and a wrong
+  // default would silently point at the wrong database.
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').url(),
 });
 
 /** The validated shape of the process environment NexCare depends on. */

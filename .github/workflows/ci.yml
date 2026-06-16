@@ -15,6 +15,29 @@ jobs:
     name: build
     runs-on: ubuntu-latest
 
+    # Integration tests run against a real Postgres (CLAUDE.md §4.2 — no mocks),
+    # so CI spins up the same engine version we run locally and in production.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nexcare
+          POSTGRES_PASSWORD: nexcare
+          POSTGRES_DB: nexcare_dev
+        ports:
+          - 5432:5432
+        # Hold the job's steps until Postgres is accepting connections.
+        options: >-
+          --health-cmd "pg_isready -U nexcare -d nexcare_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Consumed by Prisma. The service is reachable on localhost because we map
+    # its port to the runner above.
+    env:
+      DATABASE_URL: postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +53,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma generate
 
       - name: Lint
         run: pnpm lint

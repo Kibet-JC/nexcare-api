@@ -5,6 +5,7 @@ import type { Server } from 'node:http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
+import { prisma } from './lib/prisma.js';
 
 const app = createApp();
 
@@ -23,8 +24,18 @@ function shutdown(signal: NodeJS.Signals): void {
       logger.error({ err }, 'error during shutdown');
       process.exit(1);
     }
-    logger.info('shutdown complete');
-    process.exit(0);
+    // HTTP is drained; now release the database pool before exiting so Postgres
+    // doesn't hold the connections open until they time out.
+    prisma
+      .$disconnect()
+      .then(() => {
+        logger.info('shutdown complete');
+        process.exit(0);
+      })
+      .catch((disconnectErr: unknown) => {
+        logger.error({ err: disconnectErr }, 'error disconnecting prisma');
+        process.exit(1);
+      });
   });
 }
 

@@ -12,13 +12,16 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "prisma:generate": "prisma generate",
+    "db:reset": "docker compose down -v && docker compose up -d"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20.19.43",
     "@types/supertest": "^7.2.0",
     "eslint": "^10.5.0",
+    "prisma": "^6.19.2",
     "supertest": "^7.2.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
@@ -26,6 +29,7 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.2",
     "dotenv": "^17.4.2",
     "express": "^5",
     "pino": "^10.3.1",
