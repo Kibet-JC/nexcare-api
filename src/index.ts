@@ -3,16 +3,13 @@
 // effects and stays trivially testable.
 import type { Server } from 'node:http';
 import { createApp } from './app.js';
+import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
-
-// TODO(#4): replace this ad-hoc PORT read with the Zod-validated, fail-fast env
-// schema. For now a parsed PORT with a 3000 fallback is enough to boot.
-const PORT = Number(process.env.PORT ?? 3000);
 
 const app = createApp();
 
-const server: Server = app.listen(PORT, () => {
-  logger.info({ port: PORT }, 'nexcare-api listening');
+const server: Server = app.listen(env.PORT, () => {
+  logger.info({ port: env.PORT }, 'nexcare-api listening');
 });
 
 /**
