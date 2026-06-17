@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "prisma:generate": "prisma generate",
-    "db:reset": "docker compose down -v && docker compose up -d"
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "db:reset": "docker compose down -v && docker compose up -d && pnpm prisma migrate dev"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
