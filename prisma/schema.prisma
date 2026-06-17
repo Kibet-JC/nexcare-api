@@ -1,11 +1,7 @@
 // NexCare API — Prisma schema.
 //
-// This file currently defines only the database connection and client
-// generator. There are intentionally NO data models yet: this issue stands up
-// the database plumbing (connection, client singleton, integration test).
-//
-// The first domain model (Patient) lands in Issue #6. Every model added from
-// here on follows the conventions in CLAUDE.md §4.2 — TIMESTAMPTZ dates,
+// Defines the database connection, the client generator, and the domain models.
+// Every model follows the conventions in CLAUDE.md §4.2 — TIMESTAMPTZ dates,
 // E.164 phone strings, soft-delete via `deletedAt` where applicable.
 
 generator client {
@@ -15,4 +11,36 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+/// Biological sex recorded at registration. A small closed set kept in the
+/// database as a native enum so the value is constrained at the storage layer,
+/// not just in application validation.
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+}
+
+/// A patient of Elara Healthcare. This is PII/PHI under the Kenya Data
+/// Protection Act, 2019 — access is logged (Issue #8) and the row is never hard
+/// deleted: `deletedAt` marks a soft delete so clinical history is retained.
+model Patient {
+  id          String    @id @default(cuid())
+  firstName   String
+  lastName    String
+  // Clinical dates always carry a timezone (CLAUDE.md §4.2).
+  dateOfBirth DateTime  @db.Timestamptz(3)
+  sex         Sex
+  // E.164 string, e.g. +254712345678.
+  phone       String?
+  // National ID is a natural unique key when present; optional at registration.
+  nationalId  String?   @unique
+  email       String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  // Soft-delete marker. NULL = active; a timestamp = deleted (row retained).
+  deletedAt   DateTime? @db.Timestamptz(3)
+
+  @@map("patients")
 }

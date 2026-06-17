@@ -57,6 +57,11 @@ jobs:
       - name: Generate Prisma client
         run: pnpm prisma generate
 
+      # Apply committed migrations to the CI Postgres so the integration tests
+      # have the schema (e.g. the patients table) to run against.
+      - name: Apply database migrations
+        run: pnpm prisma migrate deploy
+
       - name: Lint
         run: pnpm lint
 
