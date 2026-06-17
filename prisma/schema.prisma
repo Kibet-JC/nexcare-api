@@ -42,5 +42,40 @@ model Patient {
   // Soft-delete marker. NULL = active; a timestamp = deleted (row retained).
   deletedAt   DateTime? @db.Timestamptz(3)
 
+  // Back-relation to bookings. A patient may have many appointments over time.
+  appointments Appointment[]
+
   @@map("patients")
+}
+
+/// Lifecycle of a booked appointment. Kept as a native Postgres enum so the
+/// value is constrained at the storage layer, not just in application validation.
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+/// A booked appointment for a patient. Soft-deleted via `deletedAt` so the
+/// clinical record is retained (CLAUDE.md §4.2). The patient relation uses
+/// `onDelete: Restrict` to preserve referential integrity: a patient with
+/// appointments cannot be hard-deleted out from under them.
+model Appointment {
+  id              String            @id @default(cuid())
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  // Clinical dates always carry a timezone (CLAUDE.md §4.2).
+  scheduledFor    DateTime          @db.Timestamptz(3)
+  durationMinutes Int               @default(30)
+  reason          String?
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  // Soft-delete marker. NULL = active; a timestamp = deleted (row retained).
+  deletedAt       DateTime?         @db.Timestamptz(3)
+
+  @@index([patientId])
+  @@map("appointments")
 }
