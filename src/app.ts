@@ -9,6 +9,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './lib/problem.js';
+import { appointmentRouter } from './modules/appointment/appointment.routes.js';
 import { patientRouter } from './modules/patient/patient.routes.js';
 
 export function createApp(): Express {
@@ -34,6 +35,10 @@ export function createApp(): Express {
   // Patient domain (CLAUDE.md §4.2). Open for now; auth/audit/consent land in
   // later issues (#10/#12, #8, #13).
   app.use('/api/v1/patients', patientRouter);
+
+  // Appointment domain (CLAUDE.md §4.2). Open for now; auth/audit/consent land
+  // in later issues (#10/#12, #8, #13).
+  app.use('/api/v1/appointments', appointmentRouter);
 
   // Unmatched routes -> 404 Problem Details.
   app.use(notFoundHandler);
