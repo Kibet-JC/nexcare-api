@@ -33,6 +33,8 @@ appointmentRouter.post(
   validate(createAppointmentSchema, 'body'),
   async (req, res) => {
     const appointment = await createAppointment(req.body);
+    // Expose the new id so the global audit middleware records entityId (#8).
+    res.locals.auditEntityId = appointment.id;
     res.status(201).json(appointment);
   },
 );

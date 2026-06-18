@@ -30,6 +30,8 @@ export const patientRouter: Router = Router();
 // Create a patient.
 patientRouter.post('/', validate(createPatientSchema, 'body'), async (req, res) => {
   const patient = await createPatient(req.body);
+  // Expose the new id so the global audit middleware records entityId (#8).
+  res.locals.auditEntityId = patient.id;
   res.status(201).json(patient);
 });
 

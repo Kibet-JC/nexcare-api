@@ -9,6 +9,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './lib/problem.js';
+import { audit } from './middleware/audit.js';
 import { appointmentRouter } from './modules/appointment/appointment.routes.js';
 import { patientRouter } from './modules/patient/patient.routes.js';
 
@@ -21,6 +22,12 @@ export function createApp(): Express {
 
   // JSON body parsing for all routes.
   app.use(express.json());
+
+  // Audit trail (CLAUDE.md §4.1, Issue #8). Registered before the routers so it
+  // observes every mutating request across all endpoints; it writes one
+  // AuditLog row on response finish and stores no PII. The health probe below
+  // is a GET, so it is never audited.
+  app.use(audit);
 
   // Liveness probe. Cheap, unauthenticated, no DB touch — just confirms the
   // process is up and serving. Versioned under /api/v1 like every endpoint.
