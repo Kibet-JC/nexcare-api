@@ -79,3 +79,40 @@ model Appointment {
   @@index([patientId])
   @@map("appointments")
 }
+
+/// The action a mutating request performed, derived from the HTTP method
+/// (POST -> CREATE, PUT/PATCH -> UPDATE, DELETE -> DELETE). Kept as a native
+/// Postgres enum so the value is constrained at the storage layer.
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/// Append-only audit trail of every mutating request, written by the global
+/// audit middleware (src/middleware/audit.ts) for Kenya Data Protection Act,
+/// 2019 accountability. Rows are NEVER updated or deleted (CLAUDE.md §4.2).
+///
+/// Compliance: this table stores NO request/response bodies and NO PII — only
+/// the metadata needed to answer "who changed what, when". `actorId` is null
+/// until authentication (#10) and RBAC (#12) land and can resolve the caller.
+model AuditLog {
+  id         String      @id @default(cuid())
+  action     AuditAction
+  // The resource type, e.g. "patient" or "appointment" (no PII).
+  entity     String
+  // The affected row's id, when known (create result or path :id). Not PII.
+  entityId   String?
+  // The authenticated caller. Null until auth (#10/#12) lands.
+  actorId    String?
+  method     String
+  // Request pathname only — never the query string, to keep PII out.
+  path       String
+  statusCode Int
+  ipAddress  String?
+  createdAt  DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
