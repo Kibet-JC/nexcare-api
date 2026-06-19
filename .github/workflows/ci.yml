@@ -37,6 +37,9 @@ jobs:
     # its port to the runner above.
     env:
       DATABASE_URL: postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public
+      # Fixed dummy value (>= 32 chars) so env validation passes in CI. NOT a
+      # real secret — production signs access tokens with the Railway-set value.
+      JWT_ACCESS_SECRET: ci-test-jwt-access-secret-0123456789abcdef
 
     steps:
       - name: Checkout

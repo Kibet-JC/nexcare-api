@@ -3,14 +3,17 @@
 // what lets the integration tests spin up an instance per file with Supertest
 // and what keeps the listen/bootstrap concern in src/index.ts.
 //
-// Security middleware (helmet, cors, cookie-parser, rate limiting) lands in
-// Issue #15; this factory intentionally stays minimal until then.
+// helmet, cors, and rate limiting land in Issue #15; cookie-parser arrives here
+// (#11) because auth reads the refresh-token cookie. This factory otherwise
+// stays minimal until #15.
 import express, { type Express, type Request, type Response } from 'express';
+import cookieParser from 'cookie-parser';
 import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './lib/problem.js';
 import { audit } from './middleware/audit.js';
 import { appointmentRouter } from './modules/appointment/appointment.routes.js';
+import { authRouter } from './modules/auth/auth.routes.js';
 import { patientRouter } from './modules/patient/patient.routes.js';
 
 export function createApp(): Express {
@@ -22,6 +25,10 @@ export function createApp(): Express {
 
   // JSON body parsing for all routes.
   app.use(express.json());
+
+  // Cookie parsing (#11): populates req.cookies so the auth router can read the
+  // HttpOnly refresh-token cookie. Cookie headers are redacted in the logger.
+  app.use(cookieParser());
 
   // Audit trail (CLAUDE.md §4.1, Issue #8). Registered before the routers so it
   // observes every mutating request across all endpoints; it writes one
@@ -38,6 +45,11 @@ export function createApp(): Express {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // Auth domain (#11): login / refresh / logout. These endpoints are public by
+  // necessity (they establish a session). Route-protecting middleware and RBAC
+  // are owned by #12; this only issues and rotates tokens.
+  app.use('/api/v1/auth', authRouter);
 
   // Patient domain (CLAUDE.md §4.2). Open for now; auth/audit/consent land in
   // later issues (#10/#12, #8, #13).

@@ -22,6 +22,7 @@ describe('config/env', () => {
     delete process.env.PORT;
     delete process.env.LOG_LEVEL;
     delete process.env.NODE_ENV;
+    process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
 
     const { env } = await import('../src/config/env.js');
 
@@ -35,6 +36,7 @@ describe('config/env', () => {
     process.env.LOG_LEVEL = 'debug';
     process.env.DATABASE_URL =
       'postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public';
+    process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
 
     const { env } = await import('../src/config/env.js');
 
@@ -45,6 +47,7 @@ describe('config/env', () => {
   it('returns a frozen env object', async () => {
     process.env.DATABASE_URL =
       'postgresql://nexcare:nexcare@localhost:5432/nexcare_dev?schema=public';
+    process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
 
     const { env } = await import('../src/config/env.js');
 
