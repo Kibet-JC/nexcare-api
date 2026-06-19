@@ -29,6 +29,13 @@ const envSchema = z.object({
   // first query. No default — the value differs per environment and a wrong
   // default would silently point at the wrong database.
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').url(),
+  // HS256 signing secret for short-lived JWT access tokens (#11). Required and
+  // at least 32 chars so the key has enough entropy to resist brute force; a
+  // missing or weak secret must fail the process on boot, never at first login.
+  // Never logged (see lib/logger redaction) and never embedded in a token.
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
 });
 
 /** The validated shape of the process environment NexCare depends on. */

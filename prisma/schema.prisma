@@ -113,7 +113,35 @@ model User {
   // Soft-delete marker. NULL = active; a timestamp = deleted (row retained).
   deletedAt    DateTime? @db.Timestamptz(3)
 
+  // Issued refresh tokens (#11). One user may hold many over time as they rotate.
+  refreshTokens RefreshToken[]
+
   @@map("users")
+}
+
+/// A rotating refresh token issued at login (#11). Only the SHA-256 hash of the
+/// opaque random token is persisted (`tokenHash`) — the raw token lives solely
+/// in the client's HttpOnly cookie and is NEVER stored or logged. Each /refresh
+/// revokes the presented token (`revokedAt`) and links the successor via
+/// `replacedByTokenId`, forming a rotation chain. Presenting an already-revoked
+/// token signals theft: the auth service revokes the user's whole chain. Rows
+/// are retained (not deleted) so that reuse-detection history survives.
+model RefreshToken {
+  id                String    @id @default(cuid())
+  // SHA-256 hex digest of the opaque token. Unique so a presented token maps to
+  // exactly one row; the raw token is never stored.
+  tokenHash         String    @unique
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt         DateTime  @db.Timestamptz(3)
+  // Set when the token is rotated out or revoked en masse on reuse detection.
+  revokedAt         DateTime? @db.Timestamptz(3)
+  // The token that superseded this one on rotation — chains the rotation lineage.
+  replacedByTokenId String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 /// The action a mutating request performed, derived from the HTTP method
