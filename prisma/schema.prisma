@@ -80,6 +80,42 @@ model Appointment {
   @@map("appointments")
 }
 
+/// A staff member's access level. Kept as a native Postgres enum so the value is
+/// constrained at the storage layer, not just in application validation. Used by
+/// authentication (#11) and RBAC enforcement (#12); no roles are applied to
+/// routes yet. Default is the least-privileged role (see `User.role`).
+enum Role {
+  ADMIN
+  CLINICIAN
+  RECEPTIONIST
+}
+
+/// A NexCare staff account used to authenticate into the platform. Credentials
+/// are stored only as an argon2id hash (`passwordHash`) — never in plaintext,
+/// and `passwordHash` is never returned to API callers (see the user service's
+/// `toSafeUser`). Soft-deleted via `deletedAt` so an offboarded user's audit
+/// trail and history are retained (CLAUDE.md §4.2). Authentication (#11) and
+/// RBAC (#12) build on this model; this issue adds the model and service only.
+model User {
+  id           String    @id @default(cuid())
+  // Stored lowercased and unique — the login identity (#11).
+  email        String    @unique
+  // argon2id hash only. NEVER plaintext, NEVER logged, NEVER returned to callers.
+  passwordHash String
+  // Defaults to the least-privileged role (least privilege by default).
+  role         Role      @default(RECEPTIONIST)
+  firstName    String?
+  lastName     String?
+  // Lets an account be disabled without deletion; enforced at login (#11).
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  // Soft-delete marker. NULL = active; a timestamp = deleted (row retained).
+  deletedAt    DateTime? @db.Timestamptz(3)
+
+  @@map("users")
+}
+
 /// The action a mutating request performed, derived from the HTTP method
 /// (POST -> CREATE, PUT/PATCH -> UPDATE, DELETE -> DELETE). Kept as a native
 /// Postgres enum so the value is constrained at the storage layer.
