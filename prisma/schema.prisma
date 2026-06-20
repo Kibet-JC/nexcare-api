@@ -45,6 +45,10 @@ model Patient {
   // Back-relation to bookings. A patient may have many appointments over time.
   appointments Appointment[]
 
+  // Back-relation to consent records (#13). A patient accumulates one consent
+  // row per grant/revoke over time; the active-consent check reads these.
+  consents     ConsentRecord[]
+
   @@map("patients")
 }
 
@@ -116,6 +120,11 @@ model User {
   // Issued refresh tokens (#11). One user may hold many over time as they rotate.
   refreshTokens RefreshToken[]
 
+  // Consent records this user recorded or revoked (#13). Two named relations so
+  // the audit trail can attribute each consent action to the responsible staff.
+  consentsGranted ConsentRecord[] @relation("ConsentGrantedBy")
+  consentsRevoked ConsentRecord[] @relation("ConsentRevokedBy")
+
   @@map("users")
 }
 
@@ -179,4 +188,55 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/// The purpose a patient's data-handling consent covers. Kept as a native
+/// Postgres enum so the value is constrained at the storage layer, not just in
+/// application validation. DATA_PROCESSING is the consent the Kenya Data
+/// Protection Act, 2019 requires before Elara Healthcare may process a patient's
+/// data — booking an appointment is gated on an ACTIVE consent of this type (#13).
+enum ConsentType {
+  DATA_PROCESSING
+  TREATMENT
+  TELEMEDICINE
+}
+
+/// How a patient's consent was captured. Kept as a native Postgres enum so the
+/// value is constrained at the storage layer.
+enum ConsentMethod {
+  VERBAL
+  WRITTEN
+  ELECTRONIC
+}
+
+/// A record of a patient's consent for a given purpose, captured by a staff
+/// member (Kenya Data Protection Act, 2019). Consent is append-only and never
+/// deleted (CLAUDE.md §4.2): a grant is one row, and a revocation stamps
+/// `revokedAt`/`revokedById` on that row rather than removing it, so the full
+/// consent history is auditable. A consent is ACTIVE when `revokedAt` is null
+/// and it has not expired; `expiresAt` null means it does not expire.
+model ConsentRecord {
+  id            String        @id @default(cuid())
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  type          ConsentType
+  method        ConsentMethod @default(VERBAL)
+  // The staff member who recorded the consent. Restricted so a user with
+  // recorded consents cannot be hard-deleted out from under the audit trail.
+  grantedById   String
+  grantedBy     User          @relation("ConsentGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  // Which version of the privacy/consent policy the patient agreed to, if tracked.
+  policyVersion String?
+  grantedAt     DateTime      @default(now()) @db.Timestamptz(3)
+  // NULL = no expiry; a timestamp = the consent lapses at that instant.
+  expiresAt     DateTime?     @db.Timestamptz(3)
+  // NULL = still active; a timestamp = revoked (row retained).
+  revokedAt     DateTime?     @db.Timestamptz(3)
+  revokedById   String?
+  revokedBy     User?         @relation("ConsentRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, type])
+  @@map("consent_records")
 }
