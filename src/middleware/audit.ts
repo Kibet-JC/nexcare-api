@@ -89,9 +89,12 @@ export const audit: RequestHandler = (req, res, next) => {
       action,
       entity,
       entityId,
-      // TODO(#10/#12): populate from the authenticated session once auth/RBAC
-      // land. Until then the actor is genuinely unknown, so null is correct.
-      actorId: null,
+      // The acting user, resolved by the authenticate middleware (#12) which
+      // runs on every protected route before the handler. By the time this
+      // `finish` handler fires, `req.user` is populated for any authenticated
+      // mutation; it stays null only for an unauthenticated request (e.g. one
+      // rejected with 401 before reaching a handler).
+      actorId: req.user?.id ?? null,
       method,
       // Pathname only — never req.originalUrl, so query strings (which could
       // carry PII) are kept out of the audit table.

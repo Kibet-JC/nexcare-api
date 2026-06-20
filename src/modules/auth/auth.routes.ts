@@ -13,6 +13,9 @@ import { Router, type CookieOptions } from 'express';
 import { validate } from '../../lib/validate.js';
 import { env } from '../../config/env.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from '../../lib/jwt.js';
+import { authenticate } from '../../middleware/authenticate.js';
+import { HttpProblem } from '../../lib/problem.js';
+import { findActiveById } from '../user/user.service.js';
 import { loginSchema, type LoginInput } from './auth.schema.js';
 import { login, refresh, logout } from './auth.service.js';
 
@@ -66,6 +69,20 @@ authRouter.post('/refresh', async (req, res) => {
 
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions);
   res.status(200).json({ accessToken, user });
+});
+
+// Identify the current caller. The one auth route that is NOT public: it
+// requires a valid access token (any role) and returns the caller's safe user
+// (never the passwordHash — see toSafeUser). We re-read by id so the response
+// reflects the live record, not stale token claims. `authenticate` already
+// proved the account is active, so a null here is an unexpected race and a
+// generic 401 is the safe answer.
+authRouter.get('/me', authenticate, async (req, res) => {
+  const user = await findActiveById(req.user!.id);
+  if (!user) {
+    throw new HttpProblem(401, 'Unauthorized', 'Authentication required');
+  }
+  res.status(200).json({ user });
 });
 
 // End the session. Revokes the presented refresh token (if any) and clears the

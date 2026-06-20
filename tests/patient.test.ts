@@ -8,6 +8,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { createActor } from './helpers/auth.js';
 
 const app = createApp();
 
@@ -20,11 +21,20 @@ const validPatient = {
   phone: '+254712345678',
 };
 
+// All patient routes are now behind authenticate + requireRole (#12). An ADMIN
+// actor (created per-test) satisfies every patient route, so these existing
+// happy paths keep exercising the handler logic, not the auth gate.
+let authHeader: { Authorization: string };
+
 describe('Patient API (/api/v1/patients)', () => {
   beforeEach(async () => {
-    // RESTART IDENTITY/CASCADE are unnecessary here (cuid PK, no FKs yet) but
-    // TRUNCATE gives each test a clean, isolated table.
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "patients" RESTART IDENTITY CASCADE');
+    // RESTART IDENTITY/CASCADE keep each test isolated. Also truncate users +
+    // audit_logs: the per-test actor inserts a user row, and mutating requests
+    // now append audit rows. refresh_tokens (FK -> users) first for safety.
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "patients", "users" RESTART IDENTITY CASCADE',
+    );
+    ({ authHeader } = await createActor('ADMIN'));
   });
 
   afterAll(async () => {
@@ -32,7 +42,7 @@ describe('Patient API (/api/v1/patients)', () => {
   });
 
   it('creates a patient (201) and returns the persisted row', async () => {
-    const res = await request(app).post('/api/v1/patients').send(validPatient);
+    const res = await request(app).post('/api/v1/patients').set(authHeader).send(validPatient);
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
@@ -47,10 +57,10 @@ describe('Patient API (/api/v1/patients)', () => {
   });
 
   it('fetches a patient by id (200)', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app).post('/api/v1/patients').set(authHeader).send(validPatient);
     const { id } = created.body;
 
-    const res = await request(app).get(`/api/v1/patients/${id}`);
+    const res = await request(app).get(`/api/v1/patients/${id}`).set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(id);
@@ -58,9 +68,9 @@ describe('Patient API (/api/v1/patients)', () => {
   });
 
   it('lists patients and includes a created one (200)', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app).post('/api/v1/patients').set(authHeader).send(validPatient);
 
-    const res = await request(app).get('/api/v1/patients');
+    const res = await request(app).get('/api/v1/patients').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -69,11 +79,12 @@ describe('Patient API (/api/v1/patients)', () => {
   });
 
   it('updates a patient (200) and the change is reflected', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app).post('/api/v1/patients').set(authHeader).send(validPatient);
     const { id } = created.body;
 
     const res = await request(app)
       .patch(`/api/v1/patients/${id}`)
+      .set(authHeader)
       .send({ lastName: 'Otieno-Mwangi' });
 
     expect(res.status).toBe(200);
@@ -81,19 +92,19 @@ describe('Patient API (/api/v1/patients)', () => {
     // Unchanged fields are untouched.
     expect(res.body.firstName).toBe('Amani');
 
-    const refetch = await request(app).get(`/api/v1/patients/${id}`);
+    const refetch = await request(app).get(`/api/v1/patients/${id}`).set(authHeader);
     expect(refetch.body.lastName).toBe('Otieno-Mwangi');
   });
 
   it('soft-deletes a patient (204), then GET returns 404 but the row persists', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app).post('/api/v1/patients').set(authHeader).send(validPatient);
     const { id } = created.body;
 
-    const del = await request(app).delete(`/api/v1/patients/${id}`);
+    const del = await request(app).delete(`/api/v1/patients/${id}`).set(authHeader);
     expect(del.status).toBe(204);
 
     // Invisible to the API...
-    const res = await request(app).get(`/api/v1/patients/${id}`);
+    const res = await request(app).get(`/api/v1/patients/${id}`).set(authHeader);
     expect(res.status).toBe(404);
 
     // ...but the row is retained in the database with deletedAt set.
@@ -105,7 +116,7 @@ describe('Patient API (/api/v1/patients)', () => {
   it('rejects a create missing firstName (400)', async () => {
     const { firstName: _omit, ...body } = validPatient;
 
-    const res = await request(app).post('/api/v1/patients').send(body);
+    const res = await request(app).post('/api/v1/patients').set(authHeader).send(body);
 
     expect(res.status).toBe(400);
     expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
@@ -113,7 +124,9 @@ describe('Patient API (/api/v1/patients)', () => {
   });
 
   it('returns 404 for an unknown id', async () => {
-    const res = await request(app).get('/api/v1/patients/cldoesnotexist0000000000000');
+    const res = await request(app)
+      .get('/api/v1/patients/cldoesnotexist0000000000000')
+      .set(authHeader);
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ status: 404 });

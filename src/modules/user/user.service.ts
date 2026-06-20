@@ -79,3 +79,18 @@ export function findByEmail(email: string): Promise<User | null> {
     where: { email: email.trim().toLowerCase() },
   });
 }
+
+/**
+ * Look up an ACTIVE user by id and return the safe user (no `passwordHash`).
+ * "Active" means the row exists, is not soft-deleted (`deletedAt` null), and is
+ * enabled (`isActive` true) — the exact gate the authenticate middleware (#12)
+ * applies to a presented access token's `sub`. A token whose subject no longer
+ * satisfies all three is treated as unauthenticated, so a single combined query
+ * is sufficient (the caller maps a null result to 401). Returns null otherwise.
+ */
+export async function findActiveById(id: string): Promise<SafeUser | null> {
+  const user = await prisma.user.findFirst({
+    where: { id, deletedAt: null, isActive: true },
+  });
+  return user ? toSafeUser(user) : null;
+}
