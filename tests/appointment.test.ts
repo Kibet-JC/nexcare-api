@@ -10,11 +10,17 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { createActor } from './helpers/auth.js';
 
 const app = createApp();
 
 // Seeded fresh before each test; its id is the patient the bookings reference.
 let patientId: string;
+
+// All appointment routes are now behind authenticate + requireRole (#12). An
+// ADMIN actor satisfies every appointment route, so these existing happy paths
+// keep exercising the handler logic, not the auth gate.
+let authHeader: { Authorization: string };
 
 // A valid create body, completed with the seeded patientId inside each test.
 const validAppointment = {
@@ -27,9 +33,12 @@ describe('Appointment API (/api/v1/appointments)', () => {
   beforeEach(async () => {
     // CASCADE + correct FK order: appointments reference patients, so truncate
     // the child table first. RESTART IDENTITY keeps each test fully isolated.
+    // Also clear users/audit_logs (the per-test actor + audited mutations) and
+    // refresh_tokens (FK -> users) first.
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "appointments", "patients" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
     );
+    ({ authHeader } = await createActor('ADMIN'));
 
     const patient = await prisma.patient.create({
       data: {
@@ -50,6 +59,7 @@ describe('Appointment API (/api/v1/appointments)', () => {
   it('books an appointment for an existing patient (201)', async () => {
     const res = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
 
     expect(res.status).toBe(201);
@@ -67,6 +77,7 @@ describe('Appointment API (/api/v1/appointments)', () => {
   it('returns 404 (not 500) when booking for an unknown patientId', async () => {
     const res = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId: 'cldoesnotexist0000000000000' });
 
     expect(res.status).toBe(404);
@@ -83,6 +94,7 @@ describe('Appointment API (/api/v1/appointments)', () => {
 
     const res = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
 
     expect(res.status).toBe(404);
@@ -92,10 +104,11 @@ describe('Appointment API (/api/v1/appointments)', () => {
   it('fetches an appointment by id (200)', async () => {
     const created = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
     const { id } = created.body;
 
-    const res = await request(app).get(`/api/v1/appointments/${id}`);
+    const res = await request(app).get(`/api/v1/appointments/${id}`).set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(id);
@@ -114,13 +127,16 @@ describe('Appointment API (/api/v1/appointments)', () => {
     });
     await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
     await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId: other.id });
 
     const res = await request(app)
       .get('/api/v1/appointments')
+      .set(authHeader)
       .query({ patientId });
 
     expect(res.status).toBe(200);
@@ -132,31 +148,34 @@ describe('Appointment API (/api/v1/appointments)', () => {
   it('updates an appointment status (200) and the change is reflected', async () => {
     const created = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
     const { id } = created.body;
 
     const res = await request(app)
       .patch(`/api/v1/appointments/${id}`)
+      .set(authHeader)
       .send({ status: 'COMPLETED' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('COMPLETED');
 
-    const refetch = await request(app).get(`/api/v1/appointments/${id}`);
+    const refetch = await request(app).get(`/api/v1/appointments/${id}`).set(authHeader);
     expect(refetch.body.status).toBe('COMPLETED');
   });
 
   it('soft-deletes an appointment (204), then GET returns 404 but the row persists', async () => {
     const created = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send({ ...validAppointment, patientId });
     const { id } = created.body;
 
-    const del = await request(app).delete(`/api/v1/appointments/${id}`);
+    const del = await request(app).delete(`/api/v1/appointments/${id}`).set(authHeader);
     expect(del.status).toBe(204);
 
     // Invisible to the API...
-    const res = await request(app).get(`/api/v1/appointments/${id}`);
+    const res = await request(app).get(`/api/v1/appointments/${id}`).set(authHeader);
     expect(res.status).toBe(404);
 
     // ...but the row is retained in the database with deletedAt set.
@@ -168,6 +187,7 @@ describe('Appointment API (/api/v1/appointments)', () => {
   it('rejects a create missing patientId (400)', async () => {
     const res = await request(app)
       .post('/api/v1/appointments')
+      .set(authHeader)
       .send(validAppointment);
 
     expect(res.status).toBe(400);

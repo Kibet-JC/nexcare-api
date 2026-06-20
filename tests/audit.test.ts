@@ -12,6 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { createActor } from './helpers/auth.js';
 
 const app = createApp();
 
@@ -24,13 +25,23 @@ const validPatient = {
   phone: '+254712345678',
 };
 
+// The acting user for every request below. Its id is what the audit trail must
+// now record as actorId, the seam from #8 filled by authenticate (#12).
+let authHeader: { Authorization: string };
+let actorId: string;
+
 describe('Audit middleware (/api/v1)', () => {
   beforeEach(async () => {
-    // One TRUNCATE for all three tables. RESTART IDENTITY/CASCADE keep each
-    // test isolated; CASCADE also clears the patient->appointment FK chain.
+    // One TRUNCATE for all tables. RESTART IDENTITY/CASCADE keep each test
+    // isolated; CASCADE also clears the patient->appointment FK chain. users +
+    // refresh_tokens (FK -> users, child first) are cleared for the per-test
+    // actor created next.
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "appointments", "patients" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
     );
+    const actor = await createActor('ADMIN');
+    authHeader = actor.authHeader;
+    actorId = actor.user.id;
   });
 
   afterAll(async () => {
@@ -38,7 +49,10 @@ describe('Audit middleware (/api/v1)', () => {
   });
 
   it('writes one CREATE audit row for a patient POST (201)', async () => {
-    const res = await request(app).post('/api/v1/patients').send(validPatient);
+    const res = await request(app)
+      .post('/api/v1/patients')
+      .set(authHeader)
+      .send(validPatient);
     expect(res.status).toBe(201);
 
     const rows = await prisma.auditLog.findMany();
@@ -50,16 +64,19 @@ describe('Audit middleware (/api/v1)', () => {
       method: 'POST',
       path: '/api/v1/patients',
       statusCode: 201,
-      // No auth yet (#10/#12): the actor is genuinely unknown.
-      actorId: null,
+      // The actor is now resolved by authenticate (#12) — no longer null.
+      actorId,
     });
   });
 
   it('writes a DELETE audit row for a patient DELETE (204)', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app)
+      .post('/api/v1/patients')
+      .set(authHeader)
+      .send(validPatient);
     const { id } = created.body;
 
-    const del = await request(app).delete(`/api/v1/patients/${id}`);
+    const del = await request(app).delete(`/api/v1/patients/${id}`).set(authHeader);
     expect(del.status).toBe(204);
 
     const deleteRows = await prisma.auditLog.findMany({
@@ -73,15 +90,20 @@ describe('Audit middleware (/api/v1)', () => {
       entityId: id,
       method: 'DELETE',
       statusCode: 204,
+      // The acting ADMIN is recorded as the actor (#12).
+      actorId,
     });
   });
 
   it('writes NO audit row for a read (GET)', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app)
+      .post('/api/v1/patients')
+      .set(authHeader)
+      .send(validPatient);
 
     // Reads must never be audited: list + fetch-by-id.
-    await request(app).get('/api/v1/patients');
-    await request(app).get(`/api/v1/patients/${created.body.id}`);
+    await request(app).get('/api/v1/patients').set(authHeader);
+    await request(app).get(`/api/v1/patients/${created.body.id}`).set(authHeader);
 
     // Only the single CREATE from the POST above should exist.
     const rows = await prisma.auditLog.findMany();
@@ -90,11 +112,15 @@ describe('Audit middleware (/api/v1)', () => {
   });
 
   it('stores no PII — the patient name appears in no audit row', async () => {
-    const created = await request(app).post('/api/v1/patients').send(validPatient);
+    const created = await request(app)
+      .post('/api/v1/patients')
+      .set(authHeader)
+      .send(validPatient);
     await request(app)
       .patch(`/api/v1/patients/${created.body.id}`)
+      .set(authHeader)
       .send({ lastName: 'Kamau-Njoroge' });
-    await request(app).delete(`/api/v1/patients/${created.body.id}`);
+    await request(app).delete(`/api/v1/patients/${created.body.id}`).set(authHeader);
 
     const rows = await prisma.auditLog.findMany();
     expect(rows).toHaveLength(3); // CREATE + UPDATE + DELETE

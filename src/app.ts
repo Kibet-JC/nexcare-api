@@ -12,6 +12,7 @@ import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './lib/problem.js';
 import { audit } from './middleware/audit.js';
+import { authenticate } from './middleware/authenticate.js';
 import { appointmentRouter } from './modules/appointment/appointment.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { patientRouter } from './modules/patient/patient.routes.js';
@@ -46,18 +47,18 @@ export function createApp(): Express {
     });
   });
 
-  // Auth domain (#11): login / refresh / logout. These endpoints are public by
-  // necessity (they establish a session). Route-protecting middleware and RBAC
-  // are owned by #12; this only issues and rotates tokens.
+  // Auth domain (#11/#12): login / refresh / logout are public by necessity
+  // (they establish a session); the router protects only its own /me route.
   app.use('/api/v1/auth', authRouter);
 
-  // Patient domain (CLAUDE.md §4.2). Open for now; auth/audit/consent land in
-  // later issues (#10/#12, #8, #13).
-  app.use('/api/v1/patients', patientRouter);
+  // Patient domain (CLAUDE.md §4.2). `authenticate` at the mount means every
+  // patient route requires a valid access token; per-route `requireRole` (#12)
+  // then enforces the role policy. Consent lands later (#13).
+  app.use('/api/v1/patients', authenticate, patientRouter);
 
-  // Appointment domain (CLAUDE.md §4.2). Open for now; auth/audit/consent land
-  // in later issues (#10/#12, #8, #13).
-  app.use('/api/v1/appointments', appointmentRouter);
+  // Appointment domain (CLAUDE.md §4.2). Authenticated at the mount; per-route
+  // `requireRole` (#12) enforces the role policy. Consent lands later (#13).
+  app.use('/api/v1/appointments', authenticate, appointmentRouter);
 
   // Unmatched routes -> 404 Problem Details.
   app.use(notFoundHandler);
