@@ -96,6 +96,16 @@ One issue → one branch → one PR → one merge. If a PR grows past ~300 lines
 - API versioned at `/api/v1/...`.
 - JSON in camelCase. FHIR mapping happens at integration boundaries, not in the public API.
 
+**Prisma model names vs. raw SQL table names (`@@map`):**
+
+This repo uses Prisma `@@map`, so model names and database table names differ. Respect the split:
+
+- In Prisma schema and TypeScript code, use the **model** names: `User`, `Patient`, `Appointment`, `AuditLog`, `RefreshToken`.
+- In raw `psql`, use the **mapped** table names — lowercase, plural, unquoted: `users`, `patients`, `appointments`, `audit_logs`, `refresh_tokens`.
+- Column names keep their camelCase form and **do** need double quotes in `psql`, e.g. `"passwordHash"`, `"tokenHash"`, `"entityId"`.
+- Never write raw `psql` like `FROM "User"` or `FROM "AuditLog"` — those quoted PascalCase names do not exist. If a query errors with `relation ... does not exist`, run `\dt` to list the real tables, then query the correct name.
+- When adding the `RefreshToken` model (#11), map it with `@@map("refresh_tokens")` to keep this convention.
+
 **Commands to prefer:**
 - `tsx watch src/index.ts` — dev server
 - `pnpm test` — Vitest
