@@ -16,6 +16,7 @@
 import type { Appointment } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { HttpProblem } from '../../lib/problem.js';
+import { hasActiveConsent } from '../consent/consent.service.js';
 import type {
   CreateAppointmentInput,
   ListQuery,
@@ -44,11 +45,26 @@ async function assertPatientActive(patientId: string): Promise<void> {
   }
 }
 
-/** Book an appointment, after verifying the patient exists and is active. */
+/**
+ * Book an appointment, after verifying the patient exists and is active AND has
+ * granted the data-processing consent the Kenya Data Protection Act, 2019
+ * requires before Elara Healthcare may process their data for a booking (#13).
+ * Absent that consent the booking is refused with 422 — the patient is valid,
+ * but the request is unprocessable until consent is on file. Only creation is
+ * gated; updates to an existing booking are not.
+ */
 export async function createAppointment(
   input: CreateAppointmentInput,
 ): Promise<Appointment> {
   await assertPatientActive(input.patientId);
+
+  if (!(await hasActiveConsent(input.patientId, 'DATA_PROCESSING'))) {
+    throw new HttpProblem(
+      422,
+      'Consent Required',
+      'Patient has not granted the data-processing consent required to book an appointment.',
+    );
+  }
 
   return prisma.appointment.create({ data: input });
 }

@@ -22,6 +22,23 @@ let patientId: string;
 // keep exercising the handler logic, not the auth gate.
 let authHeader: { Authorization: string };
 
+// The ADMIN actor's user id, used as `grantedById` when seeding the consent the
+// booking gate (#13) now requires.
+let actorId: string;
+
+// Grant a patient the ACTIVE DATA_PROCESSING consent that createAppointment now
+// requires (#13), so the booking happy paths below still succeed. Writes the
+// row directly — the consent routes have their own coverage in consent.test.ts.
+function grantDataProcessingConsent(targetPatientId: string): Promise<unknown> {
+  return prisma.consentRecord.create({
+    data: {
+      patientId: targetPatientId,
+      grantedById: actorId,
+      type: 'DATA_PROCESSING',
+    },
+  });
+}
+
 // A valid create body, completed with the seeded patientId inside each test.
 const validAppointment = {
   scheduledFor: '2026-07-01T09:30:00.000Z',
@@ -36,9 +53,11 @@ describe('Appointment API (/api/v1/appointments)', () => {
     // Also clear users/audit_logs (the per-test actor + audited mutations) and
     // refresh_tokens (FK -> users) first.
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "consent_records", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
     );
-    ({ authHeader } = await createActor('ADMIN'));
+    const actor = await createActor('ADMIN');
+    authHeader = actor.authHeader;
+    actorId = actor.user.id;
 
     const patient = await prisma.patient.create({
       data: {
@@ -50,6 +69,10 @@ describe('Appointment API (/api/v1/appointments)', () => {
       },
     });
     patientId = patient.id;
+
+    // The default patient carries an active DATA_PROCESSING consent so the
+    // existing booking happy paths still pass under the new consent gate (#13).
+    await grantDataProcessingConsent(patientId);
   });
 
   afterAll(async () => {
@@ -101,6 +124,28 @@ describe('Appointment API (/api/v1/appointments)', () => {
     expect(res.body).toMatchObject({ status: 404 });
   });
 
+  it('returns 422 when booking for a patient with no active consent (#13)', async () => {
+    // A fresh patient with NO consent on file; the gate must refuse the booking.
+    const noConsent = await prisma.patient.create({
+      data: {
+        firstName: 'Cynthia',
+        lastName: 'Wanjiru',
+        dateOfBirth: new Date('1992-09-09'),
+        sex: 'FEMALE',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/appointments')
+      .set(authHeader)
+      .send({ ...validAppointment, patientId: noConsent.id });
+
+    expect(res.status).toBe(422);
+    expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
+    expect(res.body).toMatchObject({ title: 'Consent Required', status: 422 });
+    expect(res.body.detail).toMatch(/consent/i);
+  });
+
   it('fetches an appointment by id (200)', async () => {
     const created = await request(app)
       .post('/api/v1/appointments')
@@ -125,6 +170,8 @@ describe('Appointment API (/api/v1/appointments)', () => {
         sex: 'MALE',
       },
     });
+    // The second patient also needs consent to be bookable under the #13 gate.
+    await grantDataProcessingConsent(other.id);
     await request(app)
       .post('/api/v1/appointments')
       .set(authHeader)

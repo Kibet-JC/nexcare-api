@@ -15,6 +15,7 @@ import { audit } from './middleware/audit.js';
 import { authenticate } from './middleware/authenticate.js';
 import { appointmentRouter } from './modules/appointment/appointment.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { consentRouter } from './modules/consent/consent.routes.js';
 import { patientRouter } from './modules/patient/patient.routes.js';
 
 export function createApp(): Express {
@@ -55,6 +56,13 @@ export function createApp(): Express {
   // patient route requires a valid access token; per-route `requireRole` (#12)
   // then enforces the role policy. Consent lands later (#13).
   app.use('/api/v1/patients', authenticate, patientRouter);
+
+  // Consent domain (#13). Nested under a patient: a consent always belongs to
+  // one patient. Authenticated at the mount; the router's { mergeParams: true }
+  // exposes :patientId, and per-route `requireRole` enforces the consent policy.
+  // An ACTIVE DATA_PROCESSING consent here is what the appointment service
+  // requires before a booking may be created (Kenya Data Protection Act, 2019).
+  app.use('/api/v1/patients/:patientId/consents', authenticate, consentRouter);
 
   // Appointment domain (CLAUDE.md §4.2). Authenticated at the mount; per-route
   // `requireRole` (#12) enforces the role policy. Consent lands later (#13).

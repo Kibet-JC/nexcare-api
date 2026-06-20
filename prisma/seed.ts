@@ -122,12 +122,21 @@ export async function seedDatabase(): Promise<{
 
   // Clean slate for a repeatable seed. audit_logs has no FK to the others but is
   // cleared too so a reseed does not leave stale audit rows pointing at gone
-  // entities. users stands alone (no FKs yet) but is cleared so dev accounts are
-  // recreated cleanly each run. CASCADE + correct order keeps the FK from
-  // appointments -> patients happy; RESTART IDENTITY resets sequences.
+  // entities. consent_records reference both patients and users; clear them
+  // before those parents. CASCADE + correct order keeps the FKs happy;
+  // RESTART IDENTITY resets sequences.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "audit_logs", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "audit_logs", "refresh_tokens", "consent_records", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
   );
+
+  // Dev staff accounts go through the user service so passwords are argon2id
+  // hashed and the same policy/normalisation applies as in production code.
+  // Created first so a staff id is available to attribute seeded consents to.
+  const createdUsers = await Promise.all(
+    DEV_USERS.map((devUser) => createUser(devUser)),
+  );
+  // The recording staff for seeded consents — the dev admin.
+  const grantedById = createdUsers[0]!.id;
 
   const createdPatients = await Promise.all(
     Array.from({ length: PATIENT_COUNT }, () =>
@@ -135,18 +144,24 @@ export async function seedDatabase(): Promise<{
     ),
   );
 
+  // Every seeded patient gets an active DATA_PROCESSING consent so the seeded
+  // appointments below are consistent with the booking gate (#13): an
+  // appointment may only exist for a patient who has granted that consent.
+  await prisma.consentRecord.createMany({
+    data: createdPatients.map((patient) => ({
+      patientId: patient.id,
+      grantedById,
+      type: 'DATA_PROCESSING' as const,
+      method: 'WRITTEN' as const,
+    })),
+  });
+
   const appointmentData = createdPatients.flatMap((patient) =>
     buildAppointments(patient.id),
   );
   const { count: appointmentCount } = await prisma.appointment.createMany({
     data: appointmentData,
   });
-
-  // Dev staff accounts go through the user service so passwords are argon2id
-  // hashed and the same policy/normalisation applies as in production code.
-  for (const devUser of DEV_USERS) {
-    await createUser(devUser);
-  }
 
   // Log the dev credentials so #11 can log in. Safe to log: these are throwaway
   // dev accounts that never exist in a real database (the production guard
