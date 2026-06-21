@@ -32,13 +32,8 @@ let actorId: string;
 
 describe('Audit middleware (/api/v1)', () => {
   beforeEach(async () => {
-    // One TRUNCATE for all tables. RESTART IDENTITY/CASCADE keep each test
-    // isolated; CASCADE also clears the patient->appointment FK chain. users +
-    // refresh_tokens (FK -> users, child first) are cleared for the per-test
-    // actor created next.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
-    );
+    // The global setupFile (tests/setup/reset-db.ts) truncates every table
+    // before each test; here we only seed the per-test actor.
     const actor = await createActor('ADMIN');
     authHeader = actor.authHeader;
     actorId = actor.user.id;

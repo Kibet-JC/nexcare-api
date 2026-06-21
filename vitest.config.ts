@@ -4,10 +4,16 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
-    // Integration tests run against a single shared Postgres (CLAUDE.md §4.2 —
-    // no mocks). Each suite TRUNCATEs its tables in `beforeEach`, so running
-    // test files in parallel would let one file wipe another's rows mid-test.
-    // Run files serially to keep that real-DB state isolated per file.
+    // globalSetup runs ONCE in the main process: it provisions and migrates the
+    // isolated nexcare_test database (tests/setup/global-setup.ts) so the suite
+    // never touches nexcare_dev.
+    globalSetup: ['./tests/setup/global-setup.ts'],
+    // setupFiles run in EACH worker: tests/setup/reset-db.ts repoints
+    // DATABASE_URL at nexcare_test (before env/prisma load) and registers the
+    // global beforeEach that truncates every application table for isolation.
+    setupFiles: ['./tests/setup/reset-db.ts'],
+    // The global beforeEach truncates shared tables, so files must not run
+    // against the same database concurrently — keep them serial.
     fileParallelism: false,
   },
 });

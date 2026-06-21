@@ -35,12 +35,8 @@ function book(body: Record<string, unknown>) {
 
 describe('Consent API (/api/v1/patients/:patientId/consents)', () => {
   beforeEach(async () => {
-    // CASCADE + correct FK order: consent_records and appointments reference
-    // patients; refresh_tokens reference users. Truncate children first.
-    // RESTART IDENTITY keeps each test fully isolated.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "consent_records", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
-    );
+    // The global setupFile (tests/setup/reset-db.ts) truncates every table
+    // before each test; here we only seed this file's fixtures.
     ({ authHeader } = await createActor('ADMIN'));
 
     const patient = await prisma.patient.create({

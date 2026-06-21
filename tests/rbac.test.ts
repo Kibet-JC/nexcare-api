@@ -5,7 +5,7 @@
 // gate (403 when an authenticated caller lacks the role). Needs `docker compose
 // up -d` (or CI's postgres service), the applied migrations, a valid
 // DATABASE_URL, and a JWT_ACCESS_SECRET. Relevant tables are truncated per-test.
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
@@ -29,14 +29,8 @@ async function seedPatient(): Promise<string> {
 }
 
 describe('RBAC (authenticate + requireRole)', () => {
-  beforeEach(async () => {
-    // FK order: refresh_tokens -> users, appointments -> patients. CASCADE +
-    // RESTART IDENTITY isolate each test.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
-    );
-  });
-
+  // Isolation is handled by the global setupFile (tests/setup/reset-db.ts),
+  // which truncates every table before each test.
   afterAll(async () => {
     await prisma.$disconnect();
   });

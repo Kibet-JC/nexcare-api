@@ -4,19 +4,13 @@
 // and is safe (it refuses to run in production before touching any data). They
 // need `docker compose up -d` (or CI's postgres service), the migrations
 // applied, and a valid DATABASE_URL.
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../prisma/seed.js';
 import { prisma } from '../src/lib/prisma.js';
 
 describe('seedDatabase', () => {
-  afterEach(async () => {
-    // Keep the suite isolated: clear the three tables the seed touches. CASCADE
-    // + FK order (children before parents) and RESTART IDENTITY mirror the seed.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "appointments", "patients" RESTART IDENTITY CASCADE',
-    );
-  });
-
+  // Isolation is handled by the global setupFile (tests/setup/reset-db.ts),
+  // which truncates every table before each test.
   afterAll(async () => {
     await prisma.$disconnect();
   });

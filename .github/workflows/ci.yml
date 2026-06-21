@@ -60,10 +60,11 @@ jobs:
       - name: Generate Prisma client
         run: pnpm prisma generate
 
-      # Apply committed migrations to the CI Postgres so the integration tests
-      # have the schema (e.g. the patients table) to run against.
-      - name: Apply database migrations
-        run: pnpm prisma migrate deploy
+      # No standalone `prisma migrate deploy` here: the Vitest globalSetup
+      # (tests/setup/global-setup.ts) now provisions the isolated nexcare_test
+      # database and applies the committed migrations to it, so the suite never
+      # touches nexcare_dev. The Postgres service above still supplies the
+      # server (the nexcare user can CREATE DATABASE).
 
       - name: Lint
         run: pnpm lint

@@ -28,12 +28,9 @@ let authHeader: { Authorization: string };
 
 describe('Patient API (/api/v1/patients)', () => {
   beforeEach(async () => {
-    // RESTART IDENTITY/CASCADE keep each test isolated. Also truncate users +
-    // audit_logs: the per-test actor inserts a user row, and mutating requests
-    // now append audit rows. refresh_tokens (FK -> users) first for safety.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "patients", "users" RESTART IDENTITY CASCADE',
-    );
+    // The global setupFile (tests/setup/reset-db.ts) truncates every table
+    // before each test, so we only seed this file's fixtures here. An ADMIN
+    // actor satisfies every patient route.
     ({ authHeader } = await createActor('ADMIN'));
   });
 
