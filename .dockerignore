@@ -1,0 +1,36 @@
+# Keep the build context small and never bake host/dev/secret material into an
+# image layer. The build stage reinstalls deps and compiles from source, so none
+# of the following are needed in the context.
+
+# Host install + build output — rebuilt inside the image.
+node_modules
+dist
+build
+out
+coverage
+
+# Secrets and local env — production config comes from Railway env at runtime.
+.env
+.env.*
+!.env.example
+
+# Version control and CI.
+.git
+.github
+.gitignore
+
+# Tests and test config — not part of the production image.
+tests
+vitest.config.ts
+**/*.test.ts
+**/*.spec.ts
+
+# Local dev tooling and editor cruft.
+.claude
+.vscode
+.idea
+docker-compose.yml
+Dockerfile
+.dockerignore
+*.log
+.DS_Store

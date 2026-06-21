@@ -72,5 +72,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Verify the production compile on every PR: `pnpm build` runs the same
+      # prisma generate + tsc -p tsconfig.build.json that the Docker image runs,
+      # so a build that would break the Railway deploy is caught here, not at
+      # deploy time.
+      - name: Build
+        run: pnpm build
+
       - name: Test
         run: pnpm test
