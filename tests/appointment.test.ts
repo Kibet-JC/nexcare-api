@@ -48,13 +48,8 @@ const validAppointment = {
 
 describe('Appointment API (/api/v1/appointments)', () => {
   beforeEach(async () => {
-    // CASCADE + correct FK order: appointments reference patients, so truncate
-    // the child table first. RESTART IDENTITY keeps each test fully isolated.
-    // Also clear users/audit_logs (the per-test actor + audited mutations) and
-    // refresh_tokens (FK -> users) first.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "audit_logs", "refresh_tokens", "consent_records", "appointments", "patients", "users" RESTART IDENTITY CASCADE',
-    );
+    // The global setupFile (tests/setup/reset-db.ts) truncates every table
+    // before each test; here we only seed this file's fixtures.
     const actor = await createActor('ADMIN');
     authHeader = actor.authHeader;
     actorId = actor.user.id;

@@ -5,7 +5,7 @@
 // passwordHash never leaves the service boundary. They need `docker compose up
 // -d` (or CI's postgres service), an applied `add_user` migration, and a valid
 // DATABASE_URL. The users table is truncated before each test for isolation.
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma.js';
 import { verifyPassword } from '../src/lib/password.js';
 import { createUser, findByEmail } from '../src/modules/user/user.service.js';
@@ -20,11 +20,8 @@ const validUser = {
 } as const;
 
 describe('User service', () => {
-  beforeEach(async () => {
-    // users has no FKs yet; TRUNCATE still gives each test a clean, isolated table.
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
-  });
-
+  // Isolation is handled by the global setupFile (tests/setup/reset-db.ts),
+  // which truncates every table before each test.
   afterAll(async () => {
     await prisma.$disconnect();
   });

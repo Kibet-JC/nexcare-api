@@ -39,11 +39,8 @@ function refreshCookieHeader(res: request.Response): string | undefined {
 
 describe('Auth API (/api/v1/auth)', () => {
   beforeEach(async () => {
-    // refresh_tokens references users — truncate the child first. CASCADE +
-    // RESTART IDENTITY gives each test a clean, isolated pair of tables.
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "refresh_tokens", "users" RESTART IDENTITY CASCADE',
-    );
+    // The global setupFile (tests/setup/reset-db.ts) truncates every table
+    // before each test; here we only seed the known user.
     const user = await createUser({ ...credentials, role: 'CLINICIAN' });
     userId = user.id;
   });
