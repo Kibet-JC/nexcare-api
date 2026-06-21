@@ -1,0 +1,27 @@
+// Production build config. Extends the base tsconfig but flips `noEmit` so
+// `tsc -p tsconfig.build.json` actually writes JavaScript to dist/. The dev
+// tsconfig stays emit-free (it only typechecks); this one is the only config
+// that produces the shippable artifact.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    // No .d.ts files: this is an application, not a library — nothing imports
+    // its types across a package boundary.
+    "declaration": false,
+    "sourceMap": true
+  },
+  // Compile the application source only. Tests and specs live in tests/ and are
+  // never part of the production image; listing them here keeps the build fast
+  // and the dist/ tree free of test code even if a spec ever lands under src/.
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}
