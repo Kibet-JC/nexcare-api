@@ -1,6 +1,8 @@
 # NexCare API
 
-Backend HIMS/EHR platform powering Elara Healthcare's clinical operations.
+> **Live API:** https://nexcare-api-production.up.railway.app
+
+Backend HMIS/EHR platform powering Elara Healthcare's clinical operations.
 
 **Stack:** Node.js 20 LTS · TypeScript (strict, ESM/NodeNext) · Express 5 ·
 Prisma + PostgreSQL 16 · Zod · Vitest + Supertest · argon2id · pino. See
