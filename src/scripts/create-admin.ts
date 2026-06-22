@@ -17,13 +17,17 @@
 // duplicate email as a 409 Conflict, which we treat as "already bootstrapped"
 // and exit 0, so a redeploy that re-runs the bootstrap never fails.
 //
-// Run on Railway as a one-off:  pnpm create-admin
+// This file lives under src/ so tsconfig.build.json compiles it to
+// dist/scripts/create-admin.js and the production image can run it with node —
+// the runtime image ships compiled JS only, never .ts source or tsx.
+//
+// Run on Railway as a one-off:  pnpm create-admin:prod
 // (with ADMIN_EMAIL / ADMIN_PASSWORD set in the environment).
 import { fileURLToPath } from 'node:url';
-import { createUser } from '../src/modules/user/user.service.js';
-import { HttpProblem } from '../src/lib/problem.js';
-import { logger } from '../src/lib/logger.js';
-import { prisma } from '../src/lib/prisma.js';
+import { createUser } from '../modules/user/user.service.js';
+import { HttpProblem } from '../lib/problem.js';
+import { logger } from '../lib/logger.js';
+import { prisma } from '../lib/prisma.js';
 
 async function createAdmin(): Promise<void> {
   const email = process.env.ADMIN_EMAIL?.trim();

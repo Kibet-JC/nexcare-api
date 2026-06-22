@@ -55,7 +55,7 @@ RUN apt-get update -y \
   && rm -rf /var/lib/apt/lists/*
 
 # Corepack so `pnpm prisma migrate deploy` (the Railway preDeploy step) and
-# `pnpm create-admin` (the one-off bootstrap) are runnable in the container.
+# `pnpm create-admin:prod` (the one-off bootstrap) are runnable in the container.
 RUN corepack enable
 
 ENV NODE_ENV=production
