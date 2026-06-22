@@ -69,7 +69,7 @@ created with the dedicated, idempotent one-off script. Set `ADMIN_EMAIL` and
 upper, digit, and symbol) on the service, then run once:
 
 ```bash
-pnpm create-admin
+pnpm create-admin:prod
 ```
 
 Run it from the Railway service shell, or as a one-off command on the service.
