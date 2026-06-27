@@ -27,7 +27,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Install PostgreSQL 16 client (PGDG)
+      - name: Install PostgreSQL 18 client (PGDG)
+        # Must match the Railway server major version (currently 18.x):
+        # pg_dump refuses to dump a server newer than itself. Bump this and the
+        # PG_DUMP path below together if Railway changes major version.
         run: |
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -37,7 +40,7 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
           pg_dump --version
 
       - name: Dump, encrypt, upload
@@ -53,7 +56,7 @@ jobs:
 
           # Use the PGDG-installed client explicitly so we never fall back to
           # the runner's default pg_dump (which may be an older major version).
-          PG_DUMP=/usr/lib/postgresql/16/bin/pg_dump
+          PG_DUMP=/usr/lib/postgresql/18/bin/pg_dump
 
           TS="$(date -u +%Y%m%dT%H%M%SZ)"
           DUMP="nexcare-${TS}.dump"
