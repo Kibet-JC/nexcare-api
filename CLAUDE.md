@@ -80,7 +80,7 @@ One issue → one branch → one PR → one merge. If a PR grows past ~300 lines
 - Node.js 20 LTS
 - TypeScript (strict mode); `tsx` for dev, `tsc` for build
 - Express 5 with `helmet`, `cors`, `cookie-parser`, `express-rate-limit`
-- Prisma + PostgreSQL 16 (Postgres via Docker locally)
+- Prisma + PostgreSQL 18 (Railway production runs 18.x; Postgres via Docker locally — match the major version)
 - Zod for all input + env validation
 - Vitest + Supertest for tests (integration tests against a real Postgres test database — **no mocks**)
 - argon2id for password hashing
