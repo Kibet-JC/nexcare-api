@@ -15,7 +15,7 @@ Act, 2019. Backups are **encrypted at rest** before leaving the runner.
 |----------------|--------|
 | Schedule       | Daily at **02:00 UTC** (GitHub Actions `cron: "0 2 * * *"`) + manual run |
 | Dump           | `pg_dump -Fc` (custom format) from the production `DATABASE_URL` |
-| Client version | `postgresql-client-16` installed from the official **PGDG** apt repo so `pg_dump` matches the PostgreSQL 16 server |
+| Client version | `postgresql-client-18` installed from the official **PGDG** apt repo so `pg_dump` matches the Railway PostgreSQL 18 server (`pg_dump` refuses to dump a newer server) |
 | Encryption     | `gpg --symmetric --cipher-algo AES256`; passphrase fed via file descriptor, never logged |
 | Offsite store  | Cloudflare **R2** bucket `nexcare-backups` (S3-compatible), via the AWS CLI with `--endpoint-url` and `AWS_DEFAULT_REGION=auto` |
 | Naming         | `nexcare-<YYYYMMDDTHHMMSSZ>.dump.gpg` |
@@ -23,7 +23,7 @@ Act, 2019. Backups are **encrypted at rest** before leaving the runner.
 
 Workflow file: `.github/workflows/backup.yml`. Each run:
 
-1. Installs the PostgreSQL 16 client from PGDG.
+1. Installs the PostgreSQL 18 client from PGDG.
 2. Dumps the DB to `nexcare-<timestamp>.dump` (custom format).
 3. Encrypts it to `nexcare-<timestamp>.dump.gpg` (AES-256).
 4. Uploads **only** the `.gpg` to `s3://nexcare-backups/`.
@@ -67,14 +67,17 @@ aws s3 cp s3://nexcare-backups/nexcare-<timestamp>.dump.gpg . \
   --endpoint-url "$R2_ENDPOINT"
 ```
 
-### 2. Start a scratch Postgres 16 on port 5433
+### 2. Start a scratch Postgres 18 on port 5433
+
+Match the production server major version (18) so `pg_restore` loads cleanly.
+Your local `pg_restore` must also be **>= 18**.
 
 ```bash
 docker run -d --name nexcare-scratch \
   -e POSTGRES_PASSWORD=scratch \
   -e POSTGRES_DB=nexcare_scratch \
   -p 5433:5432 \
-  postgres:16
+  postgres:18
 ```
 
 ### 3. Export the required vars
