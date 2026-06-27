@@ -1,0 +1,84 @@
+name: Offsite database backup
+
+# Nightly encrypted pg_dump of the production database to Cloudflare R2.
+#
+# Compliance: backups carry patient data and are handled under the Kenya Data
+# Protection Act, 2019. They are encrypted at rest with GPG (AES-256) before
+# they ever leave the runner. The passphrase is read from a secret and passed
+# to gpg via a file descriptor so it is never echoed, logged, or visible in
+# process arguments. See README-backup-setup.md.
+
+on:
+  schedule:
+    # 02:00 UTC daily. NOTE: scheduled workflows only run from the default
+    # branch (main), so this file must be merged to main to fire on schedule.
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
+
+# Avoid overlapping runs (a slow dump must not collide with the next schedule).
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump, encrypt, and upload to R2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install PostgreSQL 16 client (PGDG)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+
+      - name: Dump, encrypt, upload
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+
+          # Use the PGDG-installed client explicitly so we never fall back to
+          # the runner's default pg_dump (which may be an older major version).
+          PG_DUMP=/usr/lib/postgresql/16/bin/pg_dump
+
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          DUMP="nexcare-${TS}.dump"
+          ENC="${DUMP}.gpg"
+
+          # 1. Dump in custom format (-Fc). Connection string comes from env,
+          #    not from a CLI arg, so it is not visible in `ps`.
+          echo "Dumping database to ${DUMP} ..."
+          "$PG_DUMP" -Fc --no-owner --no-acl -f "$DUMP" "$DATABASE_URL"
+
+          # 2. Encrypt with symmetric AES-256. The passphrase is fed on fd 3 so
+          #    it never appears in argv or the logs.
+          echo "Encrypting to ${ENC} ..."
+          gpg --batch --yes --no-tty \
+            --symmetric --cipher-algo AES256 \
+            --passphrase-fd 3 \
+            --output "$ENC" "$DUMP" 3<<<"$BACKUP_PASSPHRASE"
+
+          # 3. Upload ONLY the encrypted artifact to R2.
+          echo "Uploading ${ENC} to s3://nexcare-backups/ ..."
+          aws s3 cp "$ENC" "s3://nexcare-backups/${ENC}" \
+            --endpoint-url "$R2_ENDPOINT"
+
+          # 4. Remove the plaintext dump after a successful upload. The
+          #    unencrypted dump is never uploaded.
+          rm -f "$DUMP"
+
+          echo "Backup complete: ${ENC}"
