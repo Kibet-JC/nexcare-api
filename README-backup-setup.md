@@ -112,6 +112,33 @@ docker rm -f nexcare-scratch
 
 ---
 
+## Pull a local encrypted copy
+
+`scripts/pull-local-copy.sh` downloads the **most recent** encrypted backup from
+R2 to a local folder for a quick offline copy. It **never decrypts** — the local
+file stays a `.dump.gpg` ciphertext blob, useless without `BACKUP_PASSPHRASE`.
+
+```bash
+export R2_ENDPOINT='<your Cloudflare R2 S3 API endpoint URL>'
+# optional — defaults to ~/nexcare-backups-local
+export LOCAL_BACKUP_DIR="$HOME/nexcare-backups-local"
+
+./scripts/pull-local-copy.sh
+```
+
+R2 credentials come from the `r2-backup` AWS CLI profile (no keys on the command
+line). The script:
+
+- creates the destination folder private (`chmod 700`) if missing,
+- downloads **only** the latest `.dump.gpg` (still encrypted, `chmod 600`),
+- **prunes** local copies older than **30 days**, and
+- prints which file was pulled, the destination path, and how many local copies
+  remain.
+
+To restore one of these copies, hand it to the [restore drill](#restore-drill-local).
+
+---
+
 ## Security notes
 
 - The passphrase is never echoed and never passed as a visible CLI argument —
@@ -119,12 +146,13 @@ docker rm -f nexcare-scratch
 - The unencrypted dump is deleted after upload and is never uploaded to R2.
 - The decrypted dump during a drill lives only in a `umask 077` temp file that
   is removed by a `trap` on exit.
+- `pull-local-copy.sh` never decrypts; local copies stay encrypted in a
+  `chmod 700` folder and are pruned after 30 days.
 
 ---
 
 ## Next steps (not yet built)
 
 - **R2 lifecycle rule** to auto-delete backups older than 30 days.
-- A **"pull a local encrypted copy"** companion script for quick offline copies.
 - A **monthly automated restore-drill** workflow that restores into a scratch
   DB in CI and asserts the row counts are non-zero.
