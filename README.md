@@ -89,3 +89,13 @@ scripts/smoke-test.sh https://<your-service>.up.railway.app
 
 It curls `/api/v1/health`, asserts HTTP 200 and a JSON `status` of `"ok"`, and
 exits non-zero otherwise.
+
+## Operations
+
+Operational runbooks live in `docs/runbooks/`:
+
+- [Backup & restore](docs/runbooks/backup-restore.md) — nightly offsite encrypted
+  backups to Cloudflare R2, 30-day retention, and the tested restore-drill
+  procedure (with RTO and a destructive-restore warning).
+- [Uptime & monitoring](docs/runbooks/ops-monitoring.md) — external health
+  monitor on `/api/v1/health` and the cold-start triage path when it alerts.
