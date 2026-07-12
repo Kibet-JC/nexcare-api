@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 
@@ -87,5 +87,52 @@ describe('CORS', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('CORS with a multi-origin allowlist', () => {
+  // env.ts freezes its config at import time, so exercising a different
+  // allowlist over HTTP needs a fresh module graph: mutate process.env, drop
+  // the module cache, and dynamically re-import createApp. Same pattern as
+  // env.test.ts. The static `createApp` import above keeps its own (default)
+  // env and is unaffected.
+  const DEV = 'http://localhost:5173';
+  const PROD = 'https://app.elara.example';
+  const ORIGINAL = process.env.CORS_ALLOWED_ORIGINS;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.CORS_ALLOWED_ORIGINS = `${DEV},${PROD}`;
+  });
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) {
+      delete process.env.CORS_ALLOWED_ORIGINS;
+    } else {
+      process.env.CORS_ALLOWED_ORIGINS = ORIGINAL;
+    }
+    vi.resetModules();
+  });
+
+  it('reflects whichever allowlisted origin made the request — and only those', async () => {
+    const { createApp: createAppFresh } = await import('../src/app.js');
+    const app = createAppFresh();
+
+    const fromDev = await request(app).get('/api/v1/health').set('Origin', DEV);
+    expect(fromDev.headers['access-control-allow-origin']).toBe(DEV);
+
+    const fromProd = await request(app)
+      .get('/api/v1/health')
+      .set('Origin', PROD);
+    expect(fromProd.headers['access-control-allow-origin']).toBe(PROD);
+    expect(fromProd.headers['access-control-allow-credentials']).toBe('true');
+
+    // A third origin still gets nothing: the list is an allowlist, not a hint.
+    const fromElsewhere = await request(app)
+      .get('/api/v1/health')
+      .set('Origin', 'https://evil.example');
+    expect(
+      fromElsewhere.headers['access-control-allow-origin'],
+    ).toBeUndefined();
   });
 });

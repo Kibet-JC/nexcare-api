@@ -38,18 +38,25 @@ export function createApp(): Express {
   // Express's `X-Powered-By` header is stripped before anything else runs.
   app.use(helmet());
 
+  // Structured request/response logging, sharing the app-wide logger so
+  // redaction rules apply to logged headers and bodies.
+  app.use(pinoHttp({ logger }));
+
   // Cross-origin access for the browser client. The allowlist comes from
   // CORS_ALLOWED_ORIGINS, validated at boot (config/env.ts): exact origins
   // only, wildcards rejected, empty in production until deliberately set.
   // The header always reflects the single matched origin — never `*`, which
   // the credentialed-request spec forbids anyway. credentials:true is what
-  // lets the browser attach the HttpOnly refresh cookie. Mounted ahead of the
-  // rate limiters so browser preflights (cached 10 min via maxAge) stay cheap
-  // and don't eat into a client's per-IP budget; the trade-off — OPTIONS
-  // floods bypassing the limiter — is acceptable because preflight does no
-  // work and touches no data. Non-allowlisted origins simply get no CORS
-  // headers (the browser blocks the response); non-browser callers without an
-  // Origin header are unaffected.
+  // lets the browser attach the HttpOnly refresh cookie. Mount position is
+  // deliberate on both sides: AFTER pinoHttp so the OPTIONS preflights this
+  // middleware terminates still appear in the request logs (forensic
+  // visibility for cross-origin probing), but AHEAD of the rate limiters so
+  // preflights (cached 10 min via maxAge) stay cheap and don't eat into a
+  // client's per-IP budget — an OPTIONS flood bypassing the limiter is
+  // acceptable because preflight does no work and touches no data.
+  // Non-allowlisted origins simply get no CORS grant headers (the browser
+  // blocks the response); non-browser callers without an Origin header are
+  // unaffected.
   app.use(
     cors({
       origin: [...env.CORS_ALLOWED_ORIGINS],
@@ -59,10 +66,6 @@ export function createApp(): Express {
       maxAge: 600,
     }),
   );
-
-  // Structured request/response logging, sharing the app-wide logger so
-  // redaction rules apply to logged headers and bodies.
-  app.use(pinoHttp({ logger }));
 
   // JSON body parsing for all routes.
   app.use(express.json());
