@@ -93,6 +93,23 @@ describe('RBAC (authenticate + requireRole)', () => {
     expect(res.body.user.id).toBe(user.id);
     expect(res.body.user.email).toBe(user.email);
     expect(res.body.user.role).toBe('CLINICIAN');
+    // Present but null when never set — the column is nullable by design.
+    expect(res.body.user.profession).toBeNull();
     expect(res.body.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('returns profession from GET /auth/me when set (live record, not token claims)', async () => {
+    const { user, authHeader } = await createActor('CLINICIAN');
+    // Set AFTER the token was signed: /me re-reads the row by id, so the live
+    // value must win over anything baked into the token.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { profession: 'Clinical Officer' },
+    });
+
+    const res = await request(app).get('/api/v1/auth/me').set(authHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.profession).toBe('Clinical Officer');
   });
 });

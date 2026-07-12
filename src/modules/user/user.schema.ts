@@ -39,6 +39,9 @@ export const createUserSchema = z
     password: passwordPolicy,
     firstName: z.string().trim().min(1).optional(),
     lastName: z.string().trim().min(1).optional(),
+    // Clinical cadre/title, e.g. "Clinical Officer" — mirrors User.profession
+    // (semantically FHIR PractitionerRole.code). Free text, length-bounded.
+    profession: z.string().trim().min(1).max(100).optional(),
     role: roleSchema.optional(),
   })
   .strict();
