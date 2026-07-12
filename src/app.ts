@@ -4,10 +4,11 @@
 // and what keeps the listen/bootstrap concern in src/index.ts.
 //
 // helmet and rate limiting land here in Issue #15; cookie-parser arrived in #11
-// because auth reads the refresh-token cookie. CORS is deliberately deferred to
-// the Phase 3 frontend (no browser client exists yet).
+// because auth reads the refresh-token cookie. CORS arrived with the Phase 3
+// frontend: an env-configured exact-origin allowlist (see config/env.ts).
 import express, { type Express, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
@@ -40,6 +41,31 @@ export function createApp(): Express {
   // Structured request/response logging, sharing the app-wide logger so
   // redaction rules apply to logged headers and bodies.
   app.use(pinoHttp({ logger }));
+
+  // Cross-origin access for the browser client. The allowlist comes from
+  // CORS_ALLOWED_ORIGINS, validated at boot (config/env.ts): exact origins
+  // only, wildcards rejected, empty in production until deliberately set.
+  // The header always reflects the single matched origin — never `*`, which
+  // the credentialed-request spec forbids anyway. credentials:true is what
+  // lets the browser attach the HttpOnly refresh cookie. Mount position is
+  // deliberate on both sides: AFTER pinoHttp so the OPTIONS preflights this
+  // middleware terminates still appear in the request logs (forensic
+  // visibility for cross-origin probing), but AHEAD of the rate limiters so
+  // preflights (cached 10 min via maxAge) stay cheap and don't eat into a
+  // client's per-IP budget — an OPTIONS flood bypassing the limiter is
+  // acceptable because preflight does no work and touches no data.
+  // Non-allowlisted origins simply get no CORS grant headers (the browser
+  // blocks the response); non-browser callers without an Origin header are
+  // unaffected.
+  app.use(
+    cors({
+      origin: [...env.CORS_ALLOWED_ORIGINS],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      maxAge: 600,
+    }),
+  );
 
   // JSON body parsing for all routes.
   app.use(express.json());
