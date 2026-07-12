@@ -15,28 +15,79 @@ import { z } from 'zod';
 // design it does NOT override variables already present in process.env, so real
 // environment values (e.g. Railway in production) always win over a local .env.
 
-const envSchema = z.object({
-  NODE_ENV: z
-    .enum(['development', 'test', 'production'])
-    .default('development'),
-  PORT: z.coerce.number().default(3000),
-  LOG_LEVEL: z
-    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
-    .default('info'),
-  // PostgreSQL connection string consumed by Prisma (see prisma/schema.prisma).
-  // Required and non-empty: a missing or blank DATABASE_URL must fail the
-  // process on boot rather than surfacing as an opaque connection error on the
-  // first query. No default — the value differs per environment and a wrong
-  // default would silently point at the wrong database.
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').url(),
-  // HS256 signing secret for short-lived JWT access tokens (#11). Required and
-  // at least 32 chars so the key has enough entropy to resist brute force; a
-  // missing or weak secret must fail the process on boot, never at first login.
-  // Never logged (see lib/logger redaction) and never embedded in a token.
-  JWT_ACCESS_SECRET: z
-    .string()
-    .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
-});
+const envSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(['development', 'test', 'production'])
+      .default('development'),
+    PORT: z.coerce.number().default(3000),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+      .default('info'),
+    // PostgreSQL connection string consumed by Prisma (see prisma/schema.prisma).
+    // Required and non-empty: a missing or blank DATABASE_URL must fail the
+    // process on boot rather than surfacing as an opaque connection error on the
+    // first query. No default — the value differs per environment and a wrong
+    // default would silently point at the wrong database.
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').url(),
+    // HS256 signing secret for short-lived JWT access tokens (#11). Required and
+    // at least 32 chars so the key has enough entropy to resist brute force; a
+    // missing or weak secret must fail the process on boot, never at first login.
+    // Never logged (see lib/logger redaction) and never embedded in a token.
+    JWT_ACCESS_SECRET: z
+      .string()
+      .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+    // Comma-separated EXACT browser origins allowed to call the API with
+    // credentials (CORS). Parsed and hardened by the transform below.
+    CORS_ALLOWED_ORIGINS: z.string().optional(),
+  })
+  .transform((cfg, ctx) => {
+    // CORS allowlist hardening. The public API is called with credentials
+    // (HttpOnly refresh cookie), so a sloppy origin here would hand every
+    // browser session to an attacker's page. Rules, enforced at boot:
+    //   - wildcards are forbidden anywhere, in any environment;
+    //   - each entry must be an exact http(s) origin — scheme://host[:port],
+    //     no path, no trailing slash (checked via URL#origin round-trip);
+    //   - unset means the Vite dev origin in development/test, but an EMPTY
+    //     list in production: cross-origin stays off until an origin is
+    //     deliberately configured (fail closed), e.g. the Vercel URL later.
+    const raw =
+      cfg.CORS_ALLOWED_ORIGINS ??
+      (cfg.NODE_ENV === 'production' ? '' : 'http://localhost:5173');
+    const origins = raw
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    for (const origin of origins) {
+      if (origin.includes('*')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CORS_ALLOWED_ORIGINS'],
+          message: `wildcard origins are forbidden (got "${origin}")`,
+        });
+        continue;
+      }
+      let isExactOrigin = false;
+      try {
+        const url = new URL(origin);
+        isExactOrigin =
+          (url.protocol === 'http:' || url.protocol === 'https:') &&
+          url.origin === origin;
+      } catch {
+        isExactOrigin = false;
+      }
+      if (!isExactOrigin) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CORS_ALLOWED_ORIGINS'],
+          message: `"${origin}" must be an exact http(s) origin (scheme://host[:port], no path or trailing slash)`,
+        });
+      }
+    }
+
+    return { ...cfg, CORS_ALLOWED_ORIGINS: Object.freeze(origins) };
+  });
 
 /** The validated shape of the process environment NexCare depends on. */
 export type Env = z.infer<typeof envSchema>;
