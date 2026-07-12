@@ -51,6 +51,34 @@ describe('User service', () => {
     expect(typeof safeUser.id).toBe('string');
   });
 
+  it('accepts and persists profession (trimmed), and keeps it on the safe user', async () => {
+    const safeUser = await createUser({
+      ...validUser,
+      profession: '  Clinical Officer  ',
+    });
+
+    // Trimmed by the schema and retained after toSafeUser strips the hash.
+    expect(safeUser.profession).toBe('Clinical Officer');
+
+    const stored = await findByEmail(validUser.email);
+    expect(stored?.profession).toBe('Clinical Officer');
+  });
+
+  it('defaults profession to null when not provided', async () => {
+    const safeUser = await createUser(validUser);
+
+    expect(safeUser.profession).toBeNull();
+  });
+
+  it('rejects an empty or over-long profession', async () => {
+    await expect(
+      createUser({ ...validUser, profession: '   ' }),
+    ).rejects.toThrow();
+    await expect(
+      createUser({ ...validUser, profession: 'x'.repeat(101) }),
+    ).rejects.toThrow();
+  });
+
   it('verifyPassword is true for the correct password and false for a wrong one', async () => {
     await createUser(validUser);
     const stored = await findByEmail(validUser.email);

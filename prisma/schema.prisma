@@ -110,6 +110,11 @@ model User {
   role         Role      @default(RECEPTIONIST)
   firstName    String?
   lastName     String?
+  // Clinical cadre/title, e.g. "Clinical Officer". Semantically equivalent to
+  // FHIR PractitionerRole.code; coding-system mapping happens at integration
+  // boundaries (CLAUDE.md §4.2). Nullable so the production migration is
+  // additive-only (main auto-deploys via `prisma migrate deploy`).
+  profession   String?
   // Lets an account be disabled without deletion; enforced at login (#11).
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
