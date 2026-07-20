@@ -1,0 +1,62 @@
+version: 2
+
+updates:
+  # npm ecosystem — covers pnpm-lock.yaml. Dependabot resolves the pnpm
+  # lockfile natively; there is no separate "pnpm" ecosystem to declare.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Nairobi
+    open-pull-requests-limit: 5
+    commit-message:
+      # Match Conventional Commits (CLAUDE.md §3.2) so dependency PRs read the
+      # same as hand-written ones in the log.
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      # One PR per week for the low-risk bumps keeps the review queue small
+      # (CLAUDE.md §3.3 — read every diff). Majors stay ungrouped so each
+      # breaking change gets its own PR and its own CI run.
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Node 20 LTS is a locked stack decision (CLAUDE.md §4.2). Bumping the
+      # @types/node major ahead of the runtime breaks typecheck for no gain.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+  # Keep the actions used by ci.yml, backup.yml and security.yml patched.
+  # Action supply chain is part of the CI trust boundary.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Nairobi
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
