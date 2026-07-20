@@ -36,7 +36,39 @@ export function createApp(): Express {
   // Security headers (#15). Mounted first so every response — including the
   // health probe and any error — carries helmet's hardened headers, and so
   // Express's `X-Powered-By` header is stripped before anything else runs.
-  app.use(helmet());
+  // Mounted AFTER the `trust proxy` setting above, which the rate limiter
+  // downstream relies on to key per-IP budgets on the real client address.
+  //
+  // Two of helmet's defaults are tuned for this service:
+  //
+  // CSP — NexCare serves JSON only, never HTML, so the policy is a deny-all
+  // floor rather than a browser rendering policy. `useDefaults: false` drops
+  // helmet's script/style/img allowances (meaningless here, and they only
+  // widen what a reflected-content bug could reach): `default-src 'none'`
+  // denies every fetch class, `frame-ancestors 'none'` blocks framing of any
+  // response, `base-uri 'none'` blocks <base> injection. Cheap defence in
+  // depth for the case where a response is ever rendered as a document.
+  //
+  // HSTS — production only. The header pins a browser to HTTPS for a year, so
+  // emitting it from a dev or test server (plain HTTP on localhost) would
+  // poison the developer's browser for every other localhost service on that
+  // host. Railway terminates TLS at its edge, which is where the pin belongs.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          'default-src': ["'none'"],
+          'frame-ancestors': ["'none'"],
+          'base-uri': ["'none'"],
+        },
+      },
+      hsts:
+        env.NODE_ENV === 'production'
+          ? { maxAge: 31536000, includeSubDomains: true }
+          : false,
+    }),
+  );
 
   // Structured request/response logging, sharing the app-wide logger so
   // redaction rules apply to logged headers and bodies.
