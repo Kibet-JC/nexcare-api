@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
@@ -47,6 +47,38 @@ describe('security headers (helmet)', () => {
     const res = await request(app).get('/api/v1/health');
 
     expect(res.headers['strict-transport-security']).toBeUndefined();
+  });
+
+  it('pins HTTPS for a year in production', async () => {
+    // The case above only proves the header is ABSENT here; on its own it would
+    // stay green if the `hsts` option were deleted outright, so the production
+    // half of the requirement needs its own case. env.ts validates and freezes
+    // process.env at IMPORT time, so the only way to reach that branch is the
+    // fresh-import dance tests/env.test.ts already uses: drop the module cache,
+    // mutate a cloned environment, re-import.
+    const originalEnv = process.env;
+    vi.resetModules();
+    process.env = { ...originalEnv, NODE_ENV: 'production' };
+
+    try {
+      const { createApp: createProductionApp } = await import('../src/app.js');
+
+      const res = await request(createProductionApp()).get('/api/v1/health');
+
+      const hsts = res.headers['strict-transport-security'];
+      expect(hsts).toBeDefined();
+      expect(hsts).toContain('max-age=31536000'); // one year, in seconds
+      expect(hsts).toContain('includeSubDomains');
+      // `preload` is deliberately absent: entry on the browser preload list is
+      // effectively irreversible, and it is not Railway's edge domain we would
+      // want pinned there anyway.
+      expect(hsts).not.toContain('preload');
+    } finally {
+      // Restore the real environment and drop the production-flavoured modules
+      // so no later test file inherits them.
+      process.env = originalEnv;
+      vi.resetModules();
+    }
   });
 });
 
