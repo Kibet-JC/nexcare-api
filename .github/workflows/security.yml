@@ -1,0 +1,74 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Weekly sweep: catches a secret that reached main through a path that never
+  # ran this workflow (direct push before the rule existed, imported history).
+  schedule:
+    - cron: "0 3 * * 1"
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-latest
+
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # Pinned from the release's published checksums.txt. Verifying against a
+      # value committed here (not one fetched alongside the tarball) is what
+      # makes this a real supply-chain check rather than a corruption check.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gitleaks scans commits, not just the working tree. Without full
+          # history the default shallow clone hides every secret except the
+          # ones in the tip commit.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum --check --strict
+          tar -xzf "$tarball" gitleaks
+          install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f "$tarball" gitleaks
+          gitleaks version
+
+      # `gitleaks git` walks the full commit range. --exit-code 1 is what turns
+      # a finding into a red check; --redact keeps the matched value out of the
+      # public run log so the scan does not become the leak.
+      - name: Scan git history for secrets
+        run: |
+          gitleaks git . \
+            --no-banner \
+            --redact \
+            --exit-code 1 \
+            --report-format json \
+            --report-path gitleaks-report.json
+
+      # Only runs when the scan above failed. The report carries file, commit
+      # and rule id with the secret value redacted, which is enough to locate
+      # the leak without republishing it.
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          retention-days: 7
