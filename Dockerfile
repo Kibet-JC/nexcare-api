@@ -40,6 +40,10 @@ COPY prisma ./prisma
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 
+# Static public assets. Not compiled by tsc (rootDir is src/), so they are
+# copied verbatim and must be carried into the runtime stage separately.
+COPY public ./public
+
 # `pnpm build` = prisma generate (writes the client + engine into node_modules)
 # followed by tsc -> dist/. Generating here, on the runtime base image, is what
 # guarantees the engine binary is correct for the runtime stage.
@@ -74,6 +78,11 @@ COPY --from=build /app/node_modules ./node_modules
 
 # The compiled application.
 COPY --from=build /app/dist ./dist
+
+# Static assets served at runtime (RFC 9116 security.txt). app.ts resolves this
+# directory relative to its own module URL, so dist/ and public/ must stay
+# siblings here exactly as they are in the repository.
+COPY --from=build /app/public ./public
 
 # Prisma schema + committed migrations: required at deploy time so
 # `prisma migrate deploy` can apply pending migrations against the Railway
