@@ -90,6 +90,15 @@ scripts/smoke-test.sh https://<your-service>.up.railway.app
 It curls `/api/v1/health`, asserts HTTP 200 and a JSON `status` of `"ok"`, and
 exits non-zero otherwise.
 
+## Reporting a vulnerability
+
+Email **security@elarahealthcare.co.ke**. The full policy — scope, response
+targets, and safe-harbour expectations — is in [`SECURITY.md`](SECURITY.md), and
+the machine-readable contact is published per
+[RFC 9116](https://www.rfc-editor.org/rfc/rfc9116) at
+[`/.well-known/security.txt`](https://nexcare-api-production.up.railway.app/.well-known/security.txt)
+(source: [`public/.well-known/security.txt`](public/.well-known/security.txt)).
+
 ## Operations
 
 Operational runbooks live in `docs/runbooks/`:

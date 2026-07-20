@@ -1,0 +1,8 @@
+# NexCare API — security contact and disclosure policy (RFC 9116).
+# Full policy, scope, and response targets: SECURITY.md in the repository below.
+
+Contact: mailto:security@elarahealthcare.co.ke
+Expires: 2027-07-01T00:00:00.000Z
+Policy: https://github.com/Kibet-JC/nexcare-api/blob/main/SECURITY.md
+Canonical: https://nexcare-api-production.up.railway.app/.well-known/security.txt
+Preferred-Languages: en
