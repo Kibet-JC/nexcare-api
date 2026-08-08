@@ -17,8 +17,16 @@ FROM node:20-slim AS build
 # then fails to load at runtime on Bookworm (OpenSSL 3.0). Installing openssl
 # here makes Prisma generate the correct debian-openssl-3.0.x engine.
 # ca-certificates is included for outbound TLS (e.g. an sslmode DATABASE_URL).
+#
+# python3 and build-essential are for argon2 (0.45.0), which ships no usable
+# prebuilt binary for this platform. Its install script falls back to node-gyp,
+# and node:20-slim has neither Python nor a C toolchain, so `pnpm install` fails
+# with "gyp ERR! find Python". BUILD STAGE ONLY: the runtime stage copies
+# node_modules wholesale from here, so the compiled .node binding travels with
+# it and the runtime image stays free of compilers.
 RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends \
+       openssl ca-certificates python3 build-essential \
   && rm -rf /var/lib/apt/lists/*
 
 # Corepack ships with Node 20 and pins the pnpm version from package.json's
