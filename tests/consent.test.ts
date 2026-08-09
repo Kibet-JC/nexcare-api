@@ -15,6 +15,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
 import { createActor } from './helpers/auth.js';
+import { waitForAuditLogs } from './helpers/audit.js';
 
 const app = createApp();
 
@@ -78,9 +79,11 @@ describe('Consent API (/api/v1/patients/:patientId/consents)', () => {
     });
     expect(consent?.grantedById).toBeTruthy();
 
-    const auditRow = await prisma.auditLog.findFirst({
-      where: { entityId: res.body.id, action: 'CREATE' },
-    });
+    // Written on response `finish`, so wait for it rather than racing the insert.
+    const [auditRow] = await waitForAuditLogs(
+      { entityId: res.body.id, action: 'CREATE' },
+      1,
+    );
     expect(auditRow?.actorId).toBe(consent?.grantedById);
   });
 
