@@ -12,7 +12,9 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
+import { auditWritesSettled } from '../src/middleware/audit.js';
 import { createActor } from './helpers/auth.js';
+import { waitForAuditLogs } from './helpers/audit.js';
 
 const app = createApp();
 
@@ -50,7 +52,9 @@ describe('Audit middleware (/api/v1)', () => {
       .send(validPatient);
     expect(res.status).toBe(201);
 
-    const rows = await prisma.auditLog.findMany();
+    // The middleware writes on response `finish`, so the row may not be visible
+    // the instant the response resolves — wait for it rather than racing it.
+    const rows = await waitForAuditLogs({}, 1);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       action: 'CREATE',
@@ -64,6 +68,31 @@ describe('Audit middleware (/api/v1)', () => {
     });
   });
 
+  it('auditWritesSettled() drains the in-flight write before it resolves', async () => {
+    // The shutdown barrier (src/index.ts awaits this before prisma.$disconnect).
+    // Its contract: once it resolves, no audit insert is still in flight — so a
+    // BARE read, no polling and no retry, must already see the row.
+    //
+    // Honest limit of this test: if the insert happens to settle before the
+    // barrier is called, the barrier returns on its empty-set fast path and the
+    // pending-write branch goes unexercised. It can therefore pass without
+    // fully proving the wait, but it can never fail spuriously — a barrier that
+    // returned early while a write was outstanding would fail here. Proving the
+    // pending branch deterministically needs a mock, which CLAUDE.md §4.2
+    // rules out for this suite.
+    const res = await request(app)
+      .post('/api/v1/patients')
+      .set(authHeader)
+      .send(validPatient);
+    expect(res.status).toBe(201);
+
+    await auditWritesSettled();
+
+    const rows = await prisma.auditLog.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: 'CREATE', entityId: res.body.id });
+  });
+
   it('writes a DELETE audit row for a patient DELETE (204)', async () => {
     const created = await request(app)
       .post('/api/v1/patients')
@@ -74,9 +103,7 @@ describe('Audit middleware (/api/v1)', () => {
     const del = await request(app).delete(`/api/v1/patients/${id}`).set(authHeader);
     expect(del.status).toBe(204);
 
-    const deleteRows = await prisma.auditLog.findMany({
-      where: { action: 'DELETE' },
-    });
+    const deleteRows = await waitForAuditLogs({ action: 'DELETE' }, 1);
     expect(deleteRows).toHaveLength(1);
     expect(deleteRows[0]).toMatchObject({
       action: 'DELETE',
@@ -100,6 +127,12 @@ describe('Audit middleware (/api/v1)', () => {
     await request(app).get('/api/v1/patients').set(authHeader);
     await request(app).get(`/api/v1/patients/${created.body.id}`).set(authHeader);
 
+    // You cannot wait for an absence, so anchor on the one row that IS expected:
+    // once the POST's CREATE has landed, nothing else can still be pending —
+    // the middleware returns early for GET and never registers a `finish`
+    // handler for it (src/middleware/audit.ts). A full read is then safe.
+    await waitForAuditLogs({ action: 'CREATE' }, 1);
+
     // Only the single CREATE from the POST above should exist.
     const rows = await prisma.auditLog.findMany();
     expect(rows).toHaveLength(1);
@@ -117,7 +150,7 @@ describe('Audit middleware (/api/v1)', () => {
       .send({ lastName: 'Kamau-Njoroge' });
     await request(app).delete(`/api/v1/patients/${created.body.id}`).set(authHeader);
 
-    const rows = await prisma.auditLog.findMany();
+    const rows = await waitForAuditLogs({}, 3);
     expect(rows).toHaveLength(3); // CREATE + UPDATE + DELETE
 
     // Serialise every audit row and assert no name/PII leaked into any field.

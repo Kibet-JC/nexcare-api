@@ -10,6 +10,10 @@
 //    code is known and the audit write never sits on the request's critical
 //    path. A failed audit write is logged via pino and NEVER breaks the
 //    response the client already received.
+//  - Because `finish` fires AFTER the response is flushed, the request is no
+//    longer in-flight and `server.close()` will not wait for the insert. Every
+//    pending write is therefore registered in a module-level set so shutdown
+//    can drain it before the pool closes — see `auditWritesSettled`.
 //  - Compliance: only non-PII metadata is captured (action, entity, entity id,
 //    actor id, method, pathname, status, ip, time). No bodies, names, or
 //    diagnoses ever touch this table.
@@ -27,6 +31,70 @@ const ACTION_BY_METHOD: Record<string, AuditAction> = {
   PATCH: AuditAction.UPDATE,
   DELETE: AuditAction.DELETE,
 };
+
+/**
+ * Audit writes issued but not yet settled. Populated in the `finish` handler
+ * below and drained by `auditWritesSettled` during shutdown.
+ *
+ * Every promise stored here has already had `.catch()` attached, so it settles
+ * as fulfilled even when the insert fails — this set exists to answer "is the
+ * write still in flight?", never to surface errors.
+ */
+const inFlightWrites = new Set<Promise<unknown>>();
+
+/**
+ * How long shutdown waits for in-flight audit writes before giving up. Bounded
+ * deliberately: an unreachable Postgres must not wedge the drain forever, since
+ * the orchestrator SIGKILLs us after its own grace period regardless.
+ */
+const DRAIN_TIMEOUT_MS = 5000;
+
+/** A cancellable timer, so the drain never leaves a handle holding the loop open. */
+function expireAfter(ms: number): { expired: Promise<void>; cancel: () => void } {
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return { expired, cancel: () => clearTimeout(timer) };
+}
+
+/**
+ * Wait for every in-flight audit write to settle, bounded by `timeoutMs`.
+ *
+ * Call this during shutdown BEFORE `prisma.$disconnect()` (see src/index.ts):
+ * the inserts still need a live connection pool, so draining after the pool
+ * closes would defeat the purpose. Without this barrier an audit row issued in
+ * the last milliseconds before SIGTERM is lost on every ordinary deploy — a
+ * mutation with no trail, which is a Kenya Data Protection Act, 2019
+ * accountability gap rather than a mere lost log line.
+ *
+ * Loops rather than awaiting a single snapshot so a write registered *while*
+ * draining is still covered. If the budget runs out with writes outstanding it
+ * logs a warning naming the count: that warning is the only signal that rows
+ * may have been dropped, so it must never be silent.
+ */
+export async function auditWritesSettled(
+  timeoutMs: number = DRAIN_TIMEOUT_MS,
+): Promise<void> {
+  if (inFlightWrites.size === 0) return;
+
+  const deadline = Date.now() + timeoutMs;
+  const { expired, cancel } = expireAfter(timeoutMs);
+  try {
+    while (inFlightWrites.size > 0 && Date.now() < deadline) {
+      await Promise.race([Promise.allSettled([...inFlightWrites]), expired]);
+    }
+  } finally {
+    cancel();
+  }
+
+  if (inFlightWrites.size > 0) {
+    logger.warn(
+      { pendingWrites: inFlightWrites.size, timeoutMs },
+      'audit drain timed out with writes still in flight; audit rows may be lost',
+    );
+  }
+}
 
 /**
  * Naive singularisation good enough for our REST collections: strip a single
@@ -85,7 +153,7 @@ export const audit: RequestHandler = (req, res, next) => {
     const entityId =
       typeof localId === 'string' && localId.length > 0 ? localId : pathId;
 
-    void createAuditLog({
+    const write = createAuditLog({
       action,
       entity,
       entityId,
@@ -107,6 +175,13 @@ export const audit: RequestHandler = (req, res, next) => {
         { err, entity, action, method: req.method },
         'failed to write audit log',
       );
+    });
+
+    // Track the write until it settles so shutdown can drain it. `write` is the
+    // already-caught promise, so it never rejects and never deregisters early.
+    inFlightWrites.add(write);
+    void write.finally(() => {
+      inFlightWrites.delete(write);
     });
   });
 
