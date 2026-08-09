@@ -6,6 +6,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
+import { auditWritesSettled } from './middleware/audit.js';
 
 const app = createApp();
 
@@ -21,19 +22,30 @@ function shutdown(signal: NodeJS.Signals): void {
   logger.info({ signal }, 'shutdown signal received, draining connections');
   server.close((err) => {
     if (err) {
+      // Log, but still fall through to the drain below rather than exiting
+      // here: a failed server.close() does not mean audit writes are absent,
+      // and exiting immediately would discard exactly the rows this barrier
+      // exists to save. The non-zero exit code is preserved via `closeFailed`.
       logger.error({ err }, 'error during shutdown');
-      process.exit(1);
     }
-    // HTTP is drained; now release the database pool before exiting so Postgres
-    // doesn't hold the connections open until they time out.
-    prisma
-      .$disconnect()
+    const closeFailed = Boolean(err);
+
+    // HTTP is drained — but the audit middleware issues its insert on the
+    // response `finish` event, by which point the request is already complete
+    // and server.close() no longer waits for it. Those writes must settle
+    // BEFORE the pool closes, or an audit row issued in the last milliseconds
+    // before SIGTERM is lost on every ordinary deploy: a patient record
+    // mutating with no trail, which is an accountability gap rather than a
+    // dropped log line. The barrier is bounded (see middleware/audit.ts), so a
+    // sick database delays shutdown by seconds, never indefinitely.
+    auditWritesSettled()
+      .then(() => prisma.$disconnect())
       .then(() => {
         logger.info('shutdown complete');
-        process.exit(0);
+        process.exit(closeFailed ? 1 : 0);
       })
-      .catch((disconnectErr: unknown) => {
-        logger.error({ err: disconnectErr }, 'error disconnecting prisma');
+      .catch((shutdownErr: unknown) => {
+        logger.error({ err: shutdownErr }, 'error draining or disconnecting prisma');
         process.exit(1);
       });
   });
