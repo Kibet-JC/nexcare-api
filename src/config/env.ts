@@ -40,6 +40,26 @@ const envSchema = z
     // Comma-separated EXACT browser origins allowed to call the API with
     // credentials (CORS). Parsed and hardened by the transform below.
     CORS_ALLOWED_ORIGINS: z.string().optional(),
+    // Sentry ingest DSN (H-7). OPTIONAL and off by default: unset means the
+    // SDK is never even loaded (see lib/sentry.ts), which is the state
+    // development, test and CI run in. An empty or whitespace-only value is
+    // treated as unset — Railway variables are easy to blank, and a blank
+    // string must mean "off", not "boot failure". A non-empty value that is not
+    // a URL IS a boot failure: a typo'd DSN would otherwise fail silently at
+    // the first 500, exactly when the reporting is needed.
+    SENTRY_DSN: z.preprocess(
+      (value) =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z
+        .string()
+        .url('SENTRY_DSN must be a valid DSN URL (https://<key>@<host>/<project>)')
+        .optional(),
+    ),
+    // Version stamp for Sentry events. Explicit override first; otherwise the
+    // commit SHA Railway injects into the running container. Both optional —
+    // events are still useful without a release, just harder to bisect.
+    SENTRY_RELEASE: z.string().optional(),
+    RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
   })
   .transform((cfg, ctx) => {
     // CORS allowlist hardening. The public API is called with credentials

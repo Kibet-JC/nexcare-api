@@ -6,7 +6,12 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
+import { flushSentry, initSentry } from './lib/sentry.js';
 import { auditWritesSettled } from './middleware/audit.js';
+
+// Error tracking first, so a fault raised while the app is being built is
+// already reportable. Resolves to a no-op without SENTRY_DSN (H-7).
+await initSentry();
 
 const app = createApp();
 
@@ -38,7 +43,11 @@ function shutdown(signal: NodeJS.Signals): void {
     // mutating with no trail, which is an accountability gap rather than a
     // dropped log line. The barrier is bounded (see middleware/audit.ts), so a
     // sick database delays shutdown by seconds, never indefinitely.
+    // Same reasoning as the audit barrier applies to Sentry's send queue: an
+    // error captured in the last milliseconds before SIGTERM is still in memory
+    // and would be lost on every ordinary deploy. Both barriers are bounded.
     auditWritesSettled()
+      .then(() => flushSentry())
       .then(() => prisma.$disconnect())
       .then(() => {
         logger.info('shutdown complete');
