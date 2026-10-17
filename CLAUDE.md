@@ -144,9 +144,10 @@ This repo uses Prisma `@@map`, so model names and database table names differ. R
 
 ## 6. Pointers
 
-- Roadmap and module ladder: `~/Documents/Claude/Projects/CodeOps Lab/NEXCARE_90_DAY_ROADMAP.md`
-- Compliance and template files: `~/Documents/Claude/Projects/CodeOps Lab/templates/`
-- Phase 2 issue bootstrap script: `~/Documents/Claude/Projects/CodeOps Lab/scripts/bootstrap-nexcare-api-issues.sh`
+- Project brain and active runbook: `~/WORK/Work.OS/Projects/NexCare HMIS/` — `CLAUDE.md` and `Phase 3 - Full-Stack & AI/PHASE-3-RUNBOOK.md`
+- Roadmap and module ladder: `~/WORK/Work.OS/Projects/NexCare HMIS/Strategy/NEXCARE_90_DAY_ROADMAP.md`
+- Compliance and template files: `~/WORK/Work.OS/Projects/NexCare HMIS/Strategy/templates/`
+- Phase 2 issue bootstrap script: `~/WORK/Work.OS/Projects/NexCare HMIS/Phase 2 - Backend API/scripts/bootstrap-nexcare-api-issues.sh`
 - Locked Phase 2 stack decisions: see Cowork memory `project_phase2_stack.md`
 - Brand split (Elara public / NexCare platform): see Cowork memory `project_elara_nexcare_brand.md`
 
